@@ -1,0 +1,30 @@
+[package]
+name = "openradio"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["Frosty40"]
+description = "Night-dial terminal radio for Omarchy — Soma, old-time, liquid DnB, midnight jazz"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/newjordan/openradio_omarchy"
+homepage = "https://github.com/newjordan/openradio_omarchy"
+keywords = ["radio", "tui", "somafm", "mpv", "terminal"]
+categories = ["command-line-utilities", "multimedia::audio"]
+publish = false
+
+[[bin]]
+name = "openradio"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+crossterm = "0.28"
+ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

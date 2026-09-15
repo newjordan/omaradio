@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+.idea/
+.vscode/
+*.log
+*.swp
+.DS_Store
+openradio-*.sock
