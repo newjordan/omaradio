@@ -16,7 +16,7 @@ mod visual;
 
 use anyhow::Result;
 use app::App;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
@@ -83,6 +83,12 @@ fn run() -> Result<()> {
     // then drop every image we or mpv placed.
     let _ = kitty::close_chunk(&mut stdout());
     let _ = kitty::delete_all(&mut stdout());
+    // mpv's kitty VO switches on any-motion mouse tracking (?1003h) and hides
+    // the cursor; if it died hard those stay on and every mouse move types
+    // `CXG`-style reports into the shell. Reset them whether or not we think
+    // they were set.
+    let _ = stdout().execute(DisableMouseCapture);
+    let _ = stdout().execute(crossterm::cursor::Show);
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
     restore_stderr(saved_stderr);
