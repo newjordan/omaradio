@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="art/banner.svg" alt="omaradio — night dial for Omarchy" width="820">
+  <img src="art/shots/iss.png" alt="omaradio on Mission Control with the live NASA ISS earth view" width="960">
 </p>
 
 <p align="center">
@@ -15,10 +15,6 @@
 ---
 
 <p align="center">
-  <img src="art/shots/iss.png" alt="omaradio on Mission Control with the live NASA ISS earth view" width="820">
-</p>
-
-<p align="center">
   <img src="art/shots/goes.png" alt="NOAA GOES-19 full disk" width="400">
   <img src="art/shots/bars.png" alt="CrabMusic braille spectrum bars driven by the live mix" width="400">
 </p>
@@ -29,7 +25,8 @@
 </p>
 
 <p align="center">
-  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="820">
+  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="400">
+  <img src="art/shots/wave.png" alt="oscilloscope" width="400">
 </p>
 
 Shots are stock Kitty on Omarchy, 1080p, Berkeley Mono. The bars, wave and
