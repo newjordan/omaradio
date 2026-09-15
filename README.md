@@ -1,18 +1,16 @@
+# omaradio
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/newjordan/omaradio/main/install.sh | sh
+```
+
+Night-dial terminal radio. Small TUI, mpv under the hood. CrabMusic braille
+bars, a live oscilloscope, a Winamp-style milkdrop, and the live ISS earth
+view. Built for Omarchy.
+
 <p align="center">
   <img src="art/shots/iss.png" alt="omaradio on Mission Control with the live NASA ISS earth view" width="960">
 </p>
-
-<p align="center">
-  <strong>Night-dial terminal radio.</strong> Small TUI. mpv under the hood.<br>
-    CrabMusic braille bars, a live oscilloscope, a Winamp-style milkdrop,<br>
-    plus the live ISS earth view. Built for Omarchy.
-</p>
-
-<p align="center">
-  <code>curl -fsSL https://raw.githubusercontent.com/newjordan/omaradio/main/install.sh | sh</code>
-</p>
-
----
 
 <p align="center">
   <img src="art/shots/bars.png" alt="CrabMusic braille spectrum bars driven by the live mix" width="400">
@@ -24,17 +22,13 @@
   <img src="art/shots/milkdrop-rain.png" alt="milkdrop preset: drift rain" width="400">
 </p>
 
-<p align="center">
-  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="820">
-</p>
-
 Shots are stock Kitty on Omarchy, 1080p, Berkeley Mono. The bars, wave and
 milkdrop are reading the real PipeWire sink monitor, not a mood oscillator.
 
 ## Install
 
-The one-liner above checks dependencies, offers to install what is missing,
-builds, and puts `omaradio` in `~/.cargo/bin`. Add `-s -- --milkdrop` to also
+The one-liner at the top checks dependencies, offers to install what is
+missing, builds, and puts `omaradio` in `~/.cargo/bin`. Add `-s -- --milkdrop` to also
 set up the MilkDrop collection. By hand:
 
 ```bash
