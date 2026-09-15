@@ -159,7 +159,7 @@ fn draw_keys(frame: &mut Frame, area: Rect) {
 }
 
 fn draw_credits(frame: &mut Frame, area: Rect) {
-    let popup = centered(area, 78, 22);
+    let popup = centered(area, 78, 26);
     frame.render_widget(Clear, popup);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -177,6 +177,25 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
     let mut lines = vec![
         Line::from(Span::styled(
             "OPENRADIO  ·  unofficial night dial  ·  not affiliated with any station",
+            Style::default().fg(MUTED),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "The name",
+            Style::default()
+                .fg(Color::Rgb(255, 196, 80))
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  Pierre / PierrunoYT  shipped OpenRadio first. This is the Omarchy dial.",
+            Style::default().fg(PAPER),
+        )),
+        Line::from(Span::styled(
+            "  https://github.com/PierrunoYT/OpenRadio",
+            Style::default().fg(MUTED),
+        )),
+        Line::from(Span::styled(
+            "  https://github.com/PierrunoYT/openradio.world",
             Style::default().fg(MUTED),
         )),
         Line::from(""),

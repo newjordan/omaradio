@@ -8,6 +8,11 @@
 </p>
 
 <p align="center">
+  Named after Pierre's <a href="https://github.com/PierrunoYT/OpenRadio">OpenRadio</a>
+  — go star his repos. This is the Omarchy night-dial, not a fork of his player.
+</p>
+
+<p align="center">
   <code>cargo install --path . --force && openradio</code>
 </p>
 
@@ -93,9 +98,11 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
 
 openradio is [MIT](LICENSE) © 2026 Frosty40.
 
+The name is Pierre's. His OpenRadio is MIT © 2026 PierrunoYT —
+[`third_party/PIERRUNOYT_OPENRADIO_LICENSE`](third_party/PIERRUNOYT_OPENRADIO_LICENSE).
 CrabMusic's MIT notice is preserved in
 [`third_party/CRABMUSIC_LICENSE`](third_party/CRABMUSIC_LICENSE). mpv remains
 GPL-2.0-or-later as a separate program you install yourself.
 
-Not affiliated with SomaFM, WWOZ, WALM, The Jazz Groove, Jazz Radio, Omarchy,
-or mpv. SomaFM® is a trademark of SomaFM.
+Not affiliated with Pierre's OpenRadio, SomaFM, WWOZ, WALM, The Jazz Groove,
+Jazz Radio, Omarchy, or mpv. SomaFM® is a trademark of SomaFM.

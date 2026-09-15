@@ -6,7 +6,30 @@ Omarchy, mpv, or any other named project or broadcaster. Streams, names, and
 trademarks remain their owners'. Support the stations — listen, donate, buy
 the merch.
 
+The name **openradio** is Pierre's. This Omarchy TUI is a separate night-dial
+built in that spirit — not a fork of his player, not his official app. Go
+listen to the original too.
+
 Press `?` in the app for the same card.
+
+## The name — Pierre / PierrunoYT
+
+**OpenRadio** is Pierre's ([@PierrunoYT](https://github.com/PierrunoYT)).
+He shipped the name first: a free, no-accounts, no-ads worldwide radio
+player in the browser, plus the globe at openradio.world.
+
+This repo is `openradio_omarchy` — a tiny terminal dial for Omarchy. We
+did not copy his HTML/CSS/JS. We did take the name as a nod, and we owe
+him the mention.
+
+| Project | What it is | URL |
+|---------|------------|-----|
+| OpenRadio | Browser player, 30k+ stations via Radio Browser | https://github.com/PierrunoYT/OpenRadio |
+| openradio.world | Globe UI over Radio Garden | https://github.com/PierrunoYT/openradio.world |
+| radio-stations | Station catalog work | https://github.com/PierrunoYT/radio-stations |
+
+Pierre's OpenRadio is MIT, Copyright (c) 2026 PierrunoYT. That notice is
+preserved in [`third_party/PIERRUNOYT_OPENRADIO_LICENSE`](third_party/PIERRUNOYT_OPENRADIO_LICENSE).
 
 ## Broadcasters
 
