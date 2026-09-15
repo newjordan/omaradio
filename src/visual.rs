@@ -1,16 +1,18 @@
-//! CrabMusic-inspired spectrum bars — braille columns, peak gravity, genre mood.
+//! CrabMusic-inspired spectrum bars — braille columns, peak gravity.
+//! Driven by a real FFT of the speaker mix (PipeWire monitor), not a
+//! mood oscillator.
 //!
 //! Visual language adapted from CrabMusic
 //! (https://github.com/newjordan/crabmusic), MIT License
 //! Copyright (c) 2025 Frosty40. See ATTRIBUTION.md.
 
+use crate::analyze::BAR_COUNT;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
-const BAR_COUNT: usize = 48;
-const ATTACK: f32 = 0.28;
-const RELEASE: f32 = 0.14;
+const ATTACK: f32 = 0.35;
+const RELEASE: f32 = 0.18;
 const GRAVITY: f32 = 0.012;
 const PEAK_FLOOR: f32 = 0.08;
 
@@ -25,113 +27,23 @@ pub enum Mood {
     Brass,
 }
 
-impl Mood {
-    fn envelope(self, pos: f32) -> f32 {
-        let p = pos.clamp(0.0, 1.0);
-        match self {
-            Mood::Voice => gauss(p, 0.38, 0.16) * 0.85 + gauss(p, 0.18, 0.10) * 0.25,
-            Mood::Liquid => {
-                gauss(p, 0.10, 0.07) * 1.15
-                    + gauss(p, 0.32, 0.12) * 0.70
-                    + gauss(p, 0.78, 0.10) * 0.95
-            }
-            Mood::Space => gauss(p, 0.22, 0.18) * 0.70 + gauss(p, 0.55, 0.22) * 0.55,
-            Mood::Mission => {
-                gauss(p, 0.20, 0.16) * 0.65 + gauss(p, 0.62, 0.18) * 0.50 + gauss(p, 0.90, 0.05) * 0.45
-            }
-            Mood::Jazz => {
-                gauss(p, 0.12, 0.08) * 0.80 + gauss(p, 0.40, 0.14) * 0.55 + gauss(p, 0.72, 0.10) * 0.35
-            }
-            Mood::Blues => gauss(p, 0.18, 0.12) * 0.95 + gauss(p, 0.42, 0.14) * 0.70,
-            Mood::Brass => {
-                gauss(p, 0.14, 0.09) * 0.85
-                    + gauss(p, 0.45, 0.12) * 0.90
-                    + gauss(p, 0.70, 0.10) * 0.55
-            }
-        }
-    }
-
-    fn tempo(self) -> f32 {
-        match self {
-            Mood::Voice => 0.55,
-            Mood::Liquid => 2.35,
-            Mood::Space => 0.28,
-            Mood::Mission => 0.34,
-            Mood::Jazz => 0.72,
-            Mood::Blues => 0.48,
-            Mood::Brass => 1.05,
-        }
-    }
-
-    fn sparsity(self) -> f32 {
-        match self {
-            Mood::Voice => 0.35,
-            Mood::Liquid => 0.08,
-            Mood::Space => 0.22,
-            Mood::Mission => 0.18,
-            Mood::Jazz => 0.42,
-            Mood::Blues => 0.28,
-            Mood::Brass => 0.16,
-        }
-    }
-}
-
-fn gauss(x: f32, mu: f32, sigma: f32) -> f32 {
-    let z = (x - mu) / sigma;
-    (-0.5 * z * z).exp()
-}
-
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
-}
-
-fn hash01(n: u32) -> f32 {
-    let mut x = n.wrapping_mul(0x9E37_79B9);
-    x ^= x >> 16;
-    x = x.wrapping_mul(0x85EB_CA6B);
-    x ^= x >> 13;
-    (x as f32) / (u32::MAX as f32)
 }
 
 pub struct Spectrum {
     bars: Vec<f32>,
     peaks: Vec<f32>,
     peak_vel: Vec<f32>,
-    phase: Vec<f32>,
-    mood: Mood,
-    playing: bool,
-    volume: f32,
-    t: f32,
 }
 
 impl Spectrum {
-    pub fn new(mood: Mood) -> Self {
+    pub fn new() -> Self {
         Self {
             bars: vec![0.0; BAR_COUNT],
             peaks: vec![0.0; BAR_COUNT],
             peak_vel: vec![0.0; BAR_COUNT],
-            phase: (0..BAR_COUNT)
-                .map(|i| hash01(i as u32 * 17 + 91) * std::f32::consts::TAU)
-                .collect(),
-            mood,
-            playing: false,
-            volume: 0.7,
-            t: 0.0,
         }
-    }
-
-    pub fn set_mood(&mut self, mood: Mood) {
-        if self.mood != mood {
-            self.mood = mood;
-        }
-    }
-
-    pub fn set_playing(&mut self, playing: bool) {
-        self.playing = playing;
-    }
-
-    pub fn set_volume(&mut self, volume: f32) {
-        self.volume = volume.clamp(0.0, 1.0);
     }
 
     #[cfg(test)]
@@ -142,32 +54,16 @@ impl Spectrum {
         self.bars.iter().sum::<f32>() / self.bars.len() as f32
     }
 
-    pub fn tick(&mut self, dt: f32) {
-        self.t += dt;
+    pub fn tick(&mut self, bands: Option<&[f32]>) {
         let n = self.bars.len();
-        let tempo = self.mood.tempo();
-        let sparse = self.mood.sparsity();
-        let live = if self.playing { 1.0 } else { 0.0 };
-        let vol = (self.volume * 0.55 + 0.45) * live;
-
+        if let Some(bands) = bands {
+            for i in 0..n {
+                let target = bands.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                let rate = if target > self.bars[i] { ATTACK } else { RELEASE };
+                self.bars[i] = lerp(self.bars[i], target, rate);
+            }
+        }
         for i in 0..n {
-            let pos = i as f32 / (n.saturating_sub(1).max(1) as f32);
-            let env = self.mood.envelope(pos);
-            let wobble = (self.t * tempo * (0.7 + pos * 1.8) + self.phase[i]).sin() * 0.5 + 0.5;
-            let hat = (self.t * tempo * 3.4 + self.phase[i] * 2.1).sin().abs();
-            let gate = if hash01((i as u32) ^ ((self.t * 4.0) as u32).wrapping_mul(2654435761)) < sparse
-            {
-                0.12
-            } else {
-                1.0
-            };
-            let spark = hash01(i as u32 * 31 + ((self.t * 20.0) as u32)) * 0.10;
-            let target = (env * (0.40 + 0.50 * wobble) + hat * env * 0.18 + spark) * gate * vol;
-            let target = target.clamp(0.0, 1.0);
-
-            let rate = if target > self.bars[i] { ATTACK } else { RELEASE };
-            self.bars[i] = lerp(self.bars[i], target, rate);
-
             if self.bars[i] > self.peaks[i] && self.bars[i] > PEAK_FLOOR {
                 self.peaks[i] = self.bars[i];
                 self.peak_vel[i] = 0.0;
@@ -321,17 +217,16 @@ mod tests {
 
     #[test]
     fn silent_spectrum_decays_to_rest() {
-        let mut s = Spectrum::new(Mood::Liquid);
-        s.set_playing(true);
-        s.set_volume(0.8);
-        for _ in 0..40 {
-            s.tick(1.0 / 30.0);
+        let mut s = Spectrum::new();
+        let loud = [0.8f32; crate::analyze::BAR_COUNT];
+        for _ in 0..12 {
+            s.tick(Some(&loud));
         }
         let live = s.mean_energy();
-        assert!(live > 0.05, "live energy {live}");
-        s.set_playing(false);
+        assert!(live > 0.2, "live energy {live}");
+        let quiet = [0.0f32; crate::analyze::BAR_COUNT];
         for _ in 0..90 {
-            s.tick(1.0 / 30.0);
+            s.tick(Some(&quiet));
         }
         let rest = s.mean_energy();
         assert!(rest < 0.03, "rest energy {rest}");
@@ -343,13 +238,5 @@ mod tests {
         assert_eq!(braille_char(0), ' ');
         assert_eq!(braille_char(0xFF), '⣿');
         assert_ne!(braille_char(0x01), ' ');
-    }
-
-    #[test]
-    fn moods_have_distinct_envelopes() {
-        let space = Mood::Space.envelope(0.2);
-        let liquid = Mood::Liquid.envelope(0.1);
-        assert!(liquid > space);
-        assert!(Mood::Voice.envelope(0.9) < Mood::Voice.envelope(0.38));
     }
 }

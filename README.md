@@ -89,8 +89,8 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
 - **Playback** is [mpv](https://mpv.io) over JSON IPC — ICY titles, Soma `.pls`
   failover, volume. We spawn mpv; we do not link it.
 - **Visualizer** is a slice of [CrabMusic](https://github.com/newjordan/crabmusic)'s
-  braille columns + peak gravity, MIT © 2025 Frosty40, reimplemented here so
-  the pane stays alive even without loopback capture.
+  braille columns + peak gravity, MIT © 2025 Frosty40. Bars are a real FFT of
+  the PipeWire sink monitor — the speaker mix — not a canned oscillator.
 - **Desktop** target is [Omarchy](https://omarchy.org). It will run in any
   terminal that can do Unicode braille and 24-bit color.
 

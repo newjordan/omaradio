@@ -48,6 +48,7 @@ impl MpvPlayer {
                 "--demuxer-max-bytes=12MiB",
                 "--demuxer-readahead-secs=8",
                 "--volume=70",
+                "--audio-client-name=openradio",
                 "--msg-level=all=no",
             ])
             .arg(format!("--input-ipc-server={}", sock_path.display()))

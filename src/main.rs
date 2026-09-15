@@ -1,8 +1,10 @@
 //! openradio — a small night-dial TUI for Soma, old-time, liquid DnB, and midnight jazz.
 
 mod app;
+mod analyze;
 mod player;
 mod stations;
+mod tap;
 mod ui;
 mod visual;
 

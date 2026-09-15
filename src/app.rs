@@ -1,7 +1,9 @@
 //! Terminal radio state.
 
+use crate::analyze::Analyzer;
 use crate::player::MpvPlayer;
 use crate::stations::{self, Station, DIAL};
+use crate::tap::OutputTap;
 use crate::visual::Spectrum;
 use anyhow::Result;
 
@@ -13,22 +15,27 @@ pub struct App {
     pub status: String,
     pub show_credits: bool,
     pub should_quit: bool,
+    tap: Option<OutputTap>,
+    analyzer: Analyzer,
+    pcm: Vec<f32>,
 }
 
 impl App {
     pub fn new() -> Result<Self> {
         let selected = stations::default_index();
-        let station = &DIAL[selected];
-        let mut spectrum = Spectrum::new(station.mood);
-        spectrum.set_volume(0.70);
+        let tap = OutputTap::try_open();
+        let sample_rate = tap.as_ref().map(|t| t.sample_rate).unwrap_or(44_100);
         Ok(Self {
             selected,
             playing: None,
-            spectrum,
+            spectrum: Spectrum::new(),
             player: MpvPlayer::spawn()?,
             status: "idle — pick a station and hit enter".into(),
             show_credits: false,
             should_quit: false,
+            analyzer: Analyzer::new(sample_rate),
+            tap,
+            pcm: Vec::with_capacity(4096),
         })
     }
 
@@ -60,7 +67,6 @@ impl App {
         }
         self.selected = idx;
         let station = self.station(idx);
-        self.spectrum.set_mood(station.mood);
         match self.player.play_url(station.url) {
             Ok(()) => {
                 self.playing = Some(idx);
@@ -85,7 +91,6 @@ impl App {
     pub fn stop(&mut self) {
         let _ = self.player.stop();
         self.playing = None;
-        self.spectrum.set_playing(false);
         self.status = "stopped".into();
     }
 
@@ -97,17 +102,18 @@ impl App {
         if let Err(err) = self.player.bump_volume(delta) {
             self.status = format!("volume: {err}");
         }
-        self.spectrum
-            .set_volume((self.player.volume / 100.0).clamp(0.0, 1.0) as f32);
     }
 
-    pub fn tick(&mut self, dt: f32) {
+    pub fn tick(&mut self, _dt: f32) {
         self.player.poll();
-        let live = self.playing.is_some() && self.player.alive && !self.player.paused && !self.player.idle;
-        self.spectrum.set_playing(live);
-        self.spectrum
-            .set_volume((self.player.volume / 100.0).clamp(0.0, 1.0) as f32);
-        self.spectrum.tick(dt);
+
+        let bands = if let Some(tap) = &self.tap {
+            tap.drain(&mut self.pcm);
+            self.analyzer.ingest(&self.pcm)
+        } else {
+            None
+        };
+        self.spectrum.tick(bands.as_ref().map(|b| b.as_slice()));
 
         if let Some(err) = self.player.last_error.take() {
             self.status = format!("stream: {err}");
@@ -122,9 +128,6 @@ impl App {
                     format!("{}  ·  {}", station.name, now)
                 };
             }
-        }
-        if !self.player.alive {
-            self.spectrum.set_playing(false);
         }
     }
 }
