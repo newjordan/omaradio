@@ -177,6 +177,10 @@ impl App {
 
     pub fn toggle_credits(&mut self) {
         self.show_credits = !self.show_credits;
+        // The card is cells; a lingering blit would sit on top of it.
+        if self.kitty && self.viz.blit() {
+            self.clear_kitty = true;
+        }
     }
 
     pub fn cycle_iss_cam(&mut self) {
@@ -199,7 +203,9 @@ impl App {
     }
 
     fn set_viz(&mut self, next: VizKind) {
-        if self.viz.blit() && !next.blit() && self.kitty {
+        // Any switch drops whatever image is on screen: the native ISS mpv
+        // paints under its own Kitty image id, so replacing ours is not enough.
+        if self.kitty && self.viz != next {
             self.clear_kitty = true;
         }
         self.viz = next;

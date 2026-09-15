@@ -14,21 +14,26 @@
 
 ---
 
-```
-┌ OMARADIO  ·  SPACE STATION ───────────────────────── vol ██████░░░░ 70 ┐
-│  ● LIVE                                                                │
-│  Space Station  ·  drifting through the ionosphere                     │
-│                                                                        │
-│   ⢀⣀⣤⣶⣿⣿⣶⣤⣀⡀⢀⣀⣤⣶⣿⣷⣤⣀⢀⣀⣴⣿⣿⣦⣀⡀⣤⣶⣿⣿⣶⣤⡀⣀⣤⣿⣿⣤⣀  │
-│   ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  │
-│                                                                        │
-├ dial ──────────────────────────────────────────────────────────────────┤
-│  ▶ 3   Space Station       SomaFM  ·  tune in, turn on, space out      │
-│    5   Jazz Groove         The Jazz Groove  ·  after-midnight jazz     │
-│    6   Midnight Blues      Jazz Radio — Blues  ·  slow blues           │
-│  v viz   f milkdrop   ? credits   q quit                               │
-└────────────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="art/shots/iss.png" alt="omaradio on Mission Control with the live NASA ISS earth view" width="820">
+</p>
+
+<p align="center">
+  <img src="art/shots/goes.png" alt="NOAA GOES-19 full disk" width="400">
+  <img src="art/shots/bars.png" alt="CrabMusic braille spectrum bars driven by the live mix" width="400">
+</p>
+
+<p align="center">
+  <img src="art/shots/milkdrop-kaleido.png" alt="milkdrop preset: neon kaleido" width="400">
+  <img src="art/shots/milkdrop-rain.png" alt="milkdrop preset: drift rain" width="400">
+</p>
+
+<p align="center">
+  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="820">
+</p>
+
+Shots are stock Kitty on Omarchy, 1080p, Berkeley Mono. The bars, wave and
+milkdrop are reading the real PipeWire sink monitor, not a mood oscillator.
 
 Needs **mpv** on `PATH`. Kitty graphics for milkdrop / ISS / GOES (cell
 fallback otherwise). PipeWire `pw-record` for the live FFT. ISS live also

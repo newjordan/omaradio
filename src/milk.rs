@@ -19,6 +19,14 @@ const HOLD_MIN: f32 = 22.0;
 const HOLD_MAX: f32 = 36.0;
 /// Minimum spacing between detected onsets (≈ 375 BPM ceiling).
 const BEAT_GAP: f32 = 0.16;
+/// Fresh light added per frame. Feedback with decay d settles near
+/// gain / (1 - d), so this keeps sustained music glowing, not white.
+const SHAPE_GAIN: f32 = 0.55;
+
+/// Filmic-ish knee: keeps hue in hot zones instead of clipping to white.
+fn tonemap(c: f32) -> f32 {
+    (1.0 - (-c.max(0.0) * 1.35).exp()).clamp(0.0, 1.0)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Warp {
@@ -132,7 +140,7 @@ impl Milkdrop {
     fn set_preset(&mut self, idx: usize) -> &'static str {
         self.preset = idx % PRESETS.len();
         self.preset_age = 0.0;
-        self.flash = 1.0;
+        self.flash = 0.45;
         PRESETS[self.preset].name
     }
 
@@ -144,7 +152,7 @@ impl Milkdrop {
         self.preset_age += dt;
         self.since_beat += dt;
         self.pulse *= (-dt * 5.5).exp();
-        self.flash *= (-dt * 4.0).exp();
+        self.flash *= (-dt * 6.0).exp();
         self.hue = (self.hue + dt * 0.02).rem_euclid(1.0);
 
         let bass = mean(bands, 0, 6);
@@ -213,9 +221,9 @@ impl Milkdrop {
                 let (li, lhue) = shape(p.shape, u, v, x, w, wave, bands, &env);
                 if li > 0.002 {
                     let (cr, cg, cb) = paint(p.palette, li.min(1.0), lhue, &env);
-                    r += cr;
-                    g += cg;
-                    b += cb;
+                    r += cr * SHAPE_GAIN;
+                    g += cg * SHAPE_GAIN;
+                    b += cb * SHAPE_GAIN;
                 }
                 if flash > 0.005 {
                     r += flash;
@@ -231,7 +239,7 @@ impl Milkdrop {
         self.prev = next;
         let mut rgb = vec![0u8; w * h * 3];
         for (i, c) in self.prev.iter().enumerate() {
-            rgb[i] = (c.clamp(0.0, 1.0) * 255.0) as u8;
+            rgb[i] = (tonemap(*c) * 255.0) as u8;
         }
         rgb
     }
@@ -358,11 +366,11 @@ fn shape(kind: Shape, u: f32, v: f32, x: usize, w: usize, wave: &[f32], bands: &
         }
         Shape::PolarBars => {
             let sp = band_at(a2);
-            let len = 0.10 + sp * 0.60 + e.pulse * 0.05;
+            let len = 0.08 + sp * 0.46 + e.pulse * 0.05;
             let frac = (a2 * n as f32).fract();
             let edge = ((1.0 - (frac - 0.5).abs() * 2.0) * 1.8).clamp(0.0, 1.0);
             let radial = if r < len { 1.0 - (r / len) * 0.5 } else { 0.0 };
-            (radial * edge * (0.4 + sp), a2)
+            (radial * edge * (0.3 + sp * 0.7), a2)
         }
         Shape::WaveLine => {
             let wi = if wave.is_empty() { 0 } else { (x * wave.len() / w.max(1)).min(wave.len() - 1) };
@@ -545,7 +553,7 @@ mod tests {
             let mut m = Milkdrop::new();
             m.flash = 0.0;
             let lit = brightness(&m.render_rgb(&wave, &loud, (120, 170, 255)));
-            assert!(lit > dark + 0.03, "{name}: quiet {dark:.3} vs loud {lit:.3}");
+            assert!(lit > dark + 0.02, "{name}: quiet {dark:.3} vs loud {lit:.3}");
             assert!(dark < 0.05, "{name}: silence should be near black, got {dark:.3}");
             let _ = m.next_preset();
         }

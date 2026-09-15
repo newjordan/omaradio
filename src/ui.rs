@@ -171,9 +171,9 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
         (SpaceState::Idle, String::new())
     };
     let title = match app.viz {
-        VizKind::Bars => format!(" bars ·{} ", app.mix_hud_line().trim()),
-        VizKind::Wave => format!(" wave ·{} ", app.mix_hud_line().trim()),
-        VizKind::Milk => format!(" milkdrop · {} ·{} ", app.milk_preset(), app.mix_hud_line().trim()),
+        VizKind::Bars => " bars ".into(),
+        VizKind::Wave => " wave ".into(),
+        VizKind::Milk => format!(" milkdrop · {} ", app.milk_preset()),
         VizKind::Iss => format!(" ISS · {} ", app.space_source()),
         VizKind::Earth => " earth · NOAA GOES-19 ".into(),
     };
@@ -326,8 +326,6 @@ fn draw_keys(frame: &mut Frame, area: Rect, fullscreen: bool) {
 }
 
 fn draw_credits(frame: &mut Frame, area: Rect) {
-    let popup = centered(area, 78, 20);
-    frame.render_widget(Clear, popup);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Rgb(120, 170, 255)))
@@ -338,8 +336,6 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
                 .fg(Color::Rgb(120, 170, 255))
                 .add_modifier(Modifier::BOLD),
         ));
-    let inner = block.inner(popup);
-    frame.render_widget(block, popup);
 
     let mut lines = vec![
         Line::from(Span::styled(
@@ -406,6 +402,10 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
             "  NOAA GOES   geocolor full disk                 public domain",
             Style::default().fg(PAPER),
         )),
+        Line::from(Span::styled(
+            "  Sen 4K      optional third ISS cam             © Sen, via YouTube",
+            Style::default().fg(PAPER),
+        )),
         Line::from(""),
         Line::from(Span::styled(
             "SomaFM® is a trademark of SomaFM. WWOZ is New Orleans Public Radio.",
@@ -417,6 +417,13 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
         )),
     ]);
 
+    // Size the card to its text so nothing is clipped on short terminals.
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let width = 80.min(area.width);
+    let popup = centered(area, width, height);
+    frame.render_widget(Clear, popup);
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
     frame.render_widget(
         Paragraph::new(lines)
             .alignment(Alignment::Left)

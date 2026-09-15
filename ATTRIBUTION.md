@@ -99,8 +99,11 @@ GOES mode fetches NOAA's public GeoColor full disk JPEG:
 
 - `https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/678x678.jpg`
 
-NASA and NOAA imagery is generally public domain in the US. omaradio is
-not a NASA or NOAA product. We do not rehost the streams.
+NASA and NOAA imagery is generally public domain in the US. The optional
+third camera is **Sen**'s 4K livestream (https://sen.com), which is Sen's
+copyright, shown only when you cycle to it. omaradio is not a NASA, NOAA, or
+Sen product. We do not rehost the streams; the ISS cameras are fetched from
+YouTube through yt-dlp on your machine.
 
 ## Desktop — Omarchy
 
