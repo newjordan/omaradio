@@ -5,7 +5,7 @@
 <p align="center">
   <strong>Night-dial terminal radio.</strong> Small TUI. mpv under the hood.<br>
     CrabMusic braille bars, a live oscilloscope, a Winamp-style milkdrop,<br>
-    plus ISS earth-view and NOAA GOES full disk. Built for Omarchy.
+    plus the live ISS earth view. Built for Omarchy.
 </p>
 
 <p align="center">
@@ -15,8 +15,8 @@
 ---
 
 <p align="center">
-  <img src="art/shots/goes.png" alt="NOAA GOES-19 full disk" width="400">
   <img src="art/shots/bars.png" alt="CrabMusic braille spectrum bars driven by the live mix" width="400">
+  <img src="art/shots/wave.png" alt="oscilloscope" width="400">
 </p>
 
 <p align="center">
@@ -25,16 +25,15 @@
 </p>
 
 <p align="center">
-  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="400">
-  <img src="art/shots/wave.png" alt="oscilloscope" width="400">
+  <img src="art/shots/cinema.png" alt="cinema mode: full-window milkdrop" width="820">
 </p>
 
 Shots are stock Kitty on Omarchy, 1080p, Berkeley Mono. The bars, wave and
 milkdrop are reading the real PipeWire sink monitor, not a mood oscillator.
 
-Needs **mpv** on `PATH`. Kitty graphics for milkdrop / ISS / GOES (cell
+Needs **mpv** on `PATH`. Kitty graphics for milkdrop / ISS (cell
 fallback otherwise). PipeWire `pw-record` for the live FFT. ISS live also
-wants **yt-dlp** + **ffmpeg**; GOES wants **ffmpeg**.
+wants **yt-dlp** + **ffmpeg**.
 
 ```bash
 # Omarchy / Arch
@@ -78,8 +77,8 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
 | `+/-` `←→` | Volume |
 | `[]` `n` `p` | Previous / next and play |
 | `1-7` | Jump |
-| `v` | Cycle viz: bars → wave → milkdrop → ISS → GOES |
-| `f` | Full-window viz (milkdrop / ISS / GOES) |
+| `v` | Cycle viz: bars → wave → milkdrop → ISS |
+| `f` | Full-window viz (milkdrop / ISS) |
 | `m` | Next milkdrop preset (8 presets; they also rotate on the beat) |
 | `s` | Stop |
 | `?` / `h` | Credits |
@@ -96,7 +95,6 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
   detection, auto-rotation) blitted with the
   [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
 - **ISS** is NASA's public HD earth-view livestream (audio stays on the radio).
-- **Earth** is NOAA GOES-19 GeoColor full disk, refreshed about every 45s.
 - **Desktop** target is [Omarchy](https://omarchy.org).
 
 ## License
@@ -108,5 +106,5 @@ CrabMusic's MIT notice is preserved in
 GPL-2.0-or-later as a separate program you install yourself.
 
 Not affiliated with SomaFM, WWOZ, WALM, The Jazz Groove, Jazz Radio, Omarchy,
-mpv, NASA, or NOAA. SomaFM® is a trademark of SomaFM. ISS and GOES imagery
-remain NASA / NOAA public streams — we only display them.
+mpv, or NASA. SomaFM® is a trademark of SomaFM. ISS imagery remains NASA's
+public stream — we only display it.

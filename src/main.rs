@@ -62,7 +62,7 @@ fn event_loop(
         }
         if app.wants_kitty_blit() {
             let area = app.viz_area;
-            if matches!(app.viz, crate::app::VizKind::Iss | crate::app::VizKind::Earth) {
+            if app.viz == crate::app::VizKind::Iss {
                 if let Some(frame) = app.take_space_blit() {
                     let _ = kitty::blit_contain(
                         &mut stdout(),

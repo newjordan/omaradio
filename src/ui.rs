@@ -152,7 +152,7 @@ fn draw_cinema(frame: &mut Frame, app: &mut App, area: Rect) {
         VizKind::Iss if app.space_native() => {
             crate::space::skip_rect(frame.buffer_mut(), area);
         }
-        VizKind::Iss | VizKind::Earth => {
+        VizKind::Iss => {
             let frame_rgb = app.space_frame();
             if app.space_native() {
                 crate::space::skip_rect(frame.buffer_mut(), area);
@@ -165,7 +165,7 @@ fn draw_cinema(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
     let accent = app.on_air().unwrap_or_else(|| app.current()).accent;
-    let (state, detail) = if matches!(app.viz, VizKind::Iss | VizKind::Earth) {
+    let (state, detail) = if app.viz == VizKind::Iss {
         app.space_status()
     } else {
         (SpaceState::Idle, String::new())
@@ -175,9 +175,8 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
         VizKind::Wave => " wave ".into(),
         VizKind::Milk => format!(" milkdrop · {} ", app.milk_preset()),
         VizKind::Iss => format!(" ISS · {} ", app.space_source()),
-        VizKind::Earth => " earth · NOAA GOES-19 ".into(),
     };
-    let title = if matches!(app.viz, VizKind::Iss | VizKind::Earth) {
+    let title = if app.viz == VizKind::Iss {
         format!("{}{} ", title.trim_end(), state_badge(state))
     } else {
         title
@@ -196,7 +195,7 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = paint_mix_hud(frame, app, inner);
     app.viz_area = inner;
     // No frame yet or an error: say so truthfully instead of showing old pixels.
-    if matches!(app.viz, VizKind::Iss | VizKind::Earth)
+    if app.viz == VizKind::Iss
         && matches!(
             state,
             SpaceState::Pending | SpaceState::Error | SpaceState::Stale
@@ -226,7 +225,7 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
         VizKind::Iss if app.space_native() => {
             crate::space::skip_rect(frame.buffer_mut(), inner);
         }
-        VizKind::Iss | VizKind::Earth => {
+        VizKind::Iss => {
             let frame_rgb = app.space_frame();
             if !app.kitty || frame_rgb.is_none() {
                 crate::space::render_cells(frame.buffer_mut(), inner, frame_rgb.as_ref());
@@ -396,10 +395,6 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
         )),
         Line::from(Span::styled(
             "  NASA ISS    official HD earth-view livestream  public NASA stream",
-            Style::default().fg(PAPER),
-        )),
-        Line::from(Span::styled(
-            "  NOAA GOES   geocolor full disk                 public domain",
             Style::default().fg(PAPER),
         )),
         Line::from(Span::styled(

@@ -1,4 +1,4 @@
-//! Public Earth-from-space visuals: ISS live camera + NOAA GOES full disk.
+//! ISS live camera, straight into the terminal.
 //!
 //! On Kitty, ISS is fused into mpv's native `--vo=kitty` (optional shm): the
 //! decoder paints the pane directly. No RGB pipe, no base64, no second blit.
@@ -34,7 +34,6 @@ const ISS_CAMS: &[(&str, &str)] = &[
         "Sen 4K (HUD)",
     ),
 ];
-const GOES_JPG: &str = "https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/1808x1808.jpg";
 const ISS_W: u32 = 640;
 const ISS_H: u32 = 360;
 
@@ -57,7 +56,6 @@ pub enum SpaceState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpaceFeed {
     Iss,
-    Earth,
 }
 
 /// Truthful state: a spawned native child alone is `Pending`, never `Live`.
@@ -270,10 +268,8 @@ impl SpaceCam {
             let (url, label, is_local) = if local {
                 let p = resolve_local_video().ok().flatten().unwrap_or_default();
                 (p.to_string_lossy().into_owned(), self.source_name(), true)
-            } else if feed == SpaceFeed::Iss {
-                (self.iss_url().to_string(), cam_label(self.cam), false)
             } else {
-                (String::new(), "NOAA GOES-19 GeoColor".into(), false)
+                (self.iss_url().to_string(), cam_label(self.cam), false)
             };
             self.thread = thread::Builder::new()
                 .name("omaradio-space".into())
@@ -676,26 +672,6 @@ fn worker(
             set_detail(&detail, "reconnecting…");
             thread::sleep(Duration::from_secs(3));
         },
-        SpaceFeed::Earth => loop {
-            if !live() {
-                break;
-            }
-            let _ = grab_still(
-                GOES_JPG,
-                540,
-                540,
-                "NOAA GOES-19 GeoColor",
-                &slot,
-                &state,
-                &detail,
-            );
-            for _ in 0..45 {
-                if !live() {
-                    return;
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-        },
     }
 }
 
@@ -1062,62 +1038,6 @@ fn which(prog: &str) -> Option<PathBuf> {
     })
 }
 
-fn grab_still(
-    url: &str,
-    w: u32,
-    h: u32,
-    label: &str,
-    slot: &Mutex<Option<SpaceFrame>>,
-    state: &Mutex<SpaceState>,
-    detail: &Mutex<String>,
-) -> Result<(), ()> {
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            url,
-            "-an",
-            "-vf",
-            &fit_pad(w, h),
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            "-frames:v",
-            "1",
-            "pipe:1",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
-        .ok_or(())?;
-    let mut stdout = child.stdout.take().ok_or(())?;
-    let mut buf = vec![0u8; (w * h * 3) as usize];
-    let ok = read_exact(&mut stdout, &mut buf);
-    let _ = child.kill();
-    let _ = child.wait();
-    if !ok {
-        set_shared(state, SpaceState::Error);
-        set_detail(detail, "GOES still fetch failed (network?)");
-        return Err(());
-    }
-    set_shared(state, SpaceState::Live);
-    set_detail(detail, "");
-    if let Ok(mut g) = slot.lock() {
-        *g = Some(SpaceFrame {
-            rgb: Arc::new(buf),
-            w,
-            h,
-            seq: 1,
-            label: label.into(),
-        });
-    }
-    Ok(())
-}
 
 fn read_exact(r: &mut impl Read, buf: &mut [u8]) -> bool {
     let mut filled = 0;

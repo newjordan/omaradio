@@ -16,18 +16,16 @@ pub enum VizKind {
     Wave,
     Milk,
     Iss,
-    Earth,
 }
 
 impl VizKind {
     fn blit(self) -> bool {
-        matches!(self, VizKind::Milk | VizKind::Iss | VizKind::Earth)
+        matches!(self, VizKind::Milk | VizKind::Iss)
     }
 
     fn space_feed(self) -> Option<SpaceFeed> {
         match self {
             VizKind::Iss => Some(SpaceFeed::Iss),
-            VizKind::Earth => Some(SpaceFeed::Earth),
             _ => None,
         }
     }
@@ -196,8 +194,7 @@ impl App {
             VizKind::Bars => VizKind::Wave,
             VizKind::Wave => VizKind::Milk,
             VizKind::Milk => VizKind::Iss,
-            VizKind::Iss => VizKind::Earth,
-            VizKind::Earth => VizKind::Bars,
+            VizKind::Iss => VizKind::Bars,
         };
         self.set_viz(next);
     }
@@ -220,7 +217,6 @@ impl App {
             VizKind::Wave => "wave",
             VizKind::Milk => "milkdrop",
             VizKind::Iss => "ISS earth view",
-            VizKind::Earth => "GOES full disk",
         };
         self.status = format!("viz · {name}");
     }
@@ -249,7 +245,6 @@ impl App {
                 match self.viz {
                     VizKind::Milk => "milkdrop",
                     VizKind::Iss => "ISS",
-                    VizKind::Earth => "GOES",
                     _ => "viz",
                 }
             );
