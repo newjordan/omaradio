@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -33,8 +34,8 @@ impl MpvPlayer {
             let _ = std::fs::remove_file(&sock_path);
         }
 
-        let child = Command::new("mpv")
-            .args([
+        let mut cmd = Command::new("mpv");
+        cmd.args([
                 "--no-config",
                 "--no-video",
                 "--no-terminal",
@@ -54,7 +55,17 @@ impl MpvPlayer {
             .arg(format!("--input-ipc-server={}", sock_path.display()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        // Die with omaradio: an orphaned player would keep the radio going
+        // after a crash or a closed terminal.
+        // SAFETY: prctl is async-signal-safe and takes no Rust state.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
+        let child = cmd
             .spawn()
             .context("mpv is required — install mpv and try again")?;
 

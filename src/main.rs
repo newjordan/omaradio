@@ -41,6 +41,9 @@ fn run() -> Result<()> {
 
     let result = event_loop(&mut terminal, &mut app);
     app.shutdown();
+    // Close any Kitty graphics chunk still open (a killed mpv can leave one),
+    // then drop every image we or mpv placed.
+    let _ = kitty::close_chunk(&mut stdout());
     let _ = kitty::delete_all(&mut stdout());
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;

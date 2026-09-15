@@ -74,6 +74,13 @@ pub fn available() -> bool {
             .unwrap_or(false)
 }
 
+/// Terminate a chunked transmission that may have been cut off mid-stream.
+/// Harmless when none is open: an empty quiet transmit that Kitty discards.
+pub fn close_chunk(out: &mut impl Write) -> io::Result<()> {
+    write!(out, "\x1b_Gq=2,m=0;\x1b\\")?;
+    out.flush()
+}
+
 pub fn delete_all(out: &mut impl Write) -> io::Result<()> {
     write!(out, "\x1b_Ga=d,d=A\x1b\\")?;
     out.flush()

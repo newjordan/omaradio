@@ -135,6 +135,8 @@ pub struct SpaceCam {
     native: bool,
     area: Rect,
     mpv: Option<Child>,
+    /// IPC socket of the native child, for a polite `quit` before the axe.
+    ipc: Option<PathBuf>,
     last_spawn: Option<Instant>,
     frame: Arc<Mutex<Option<SpaceFrame>>>,
     stop: Arc<AtomicBool>,
@@ -155,6 +157,7 @@ impl SpaceCam {
             native: false,
             area: Rect::default(),
             mpv: None,
+            ipc: None,
             last_spawn: None,
             frame: Arc::new(Mutex::new(None)),
             stop: Arc::new(AtomicBool::new(false)),
@@ -358,9 +361,7 @@ impl SpaceCam {
         self.stop.store(true, Ordering::Relaxed);
         self.gen.fetch_add(1, Ordering::Relaxed);
         self.thread.take();
-        if let Some(mut child) = self.mpv.take() {
-            reap_process_group(&mut child);
-        }
+        self.stop_native();
         self.feed = None;
         self.native = false;
         self.local = false;
@@ -433,25 +434,57 @@ impl SpaceCam {
         self.cam_name()
     }
 
-    fn spawn_kitty(&mut self) {
-        if let Some(mut child) = self.mpv.take() {
-            reap_process_group(&mut child);
+    /// Ask the native mpv to quit over IPC so its Kitty VO can finish the
+    /// escape sequence it is in the middle of and delete its image; only then
+    /// kill the process group. A SIGKILL mid-chunk leaves the terminal
+    /// swallowing bytes as image data after we exit.
+    fn stop_native(&mut self) {
+        let Some(mut child) = self.mpv.take() else { return };
+        if let Some(ipc) = self.ipc.take() {
+            if let Ok(mut s) = UnixStream::connect(&ipc) {
+                let _ = s.set_write_timeout(Some(Duration::from_millis(100)));
+                let _ = s.write_all(b"{\"command\":[\"quit\"]}\n");
+            }
+            let deadline = Instant::now() + Duration::from_millis(400);
+            while Instant::now() < deadline {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    let _ = std::fs::remove_file(&ipc);
+                    return;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let _ = std::fs::remove_file(&ipc);
         }
+        reap_process_group(&mut child);
+    }
+
+    fn spawn_kitty(&mut self) {
+        self.stop_native();
         self.watcher = Arc::new(Mutex::new(NativeWatcher::new()));
         self.gen.fetch_add(1, Ordering::Relaxed);
         let area = self.area;
         let ipc = unique_ipc_path();
         let _ = std::fs::remove_file(&ipc);
         let args = native_mpv_cli_args(area, &ipc, self.iss_url(), NativeVo::Kitty);
-        match Command::new("mpv")
-            .args(&args)
+        let mut cmd = Command::new("mpv");
+        cmd.args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::null())
-            .process_group(0)
-            .spawn()
-        {
+            .process_group(0);
+        // If omaradio dies without running shutdown (SIGHUP from a closed
+        // tab, SIGKILL, a crash), the kernel kills mpv with us. Otherwise it
+        // lives on as an orphan writing Kitty graphics into the shell.
+        // SAFETY: prctl is async-signal-safe and takes no Rust state.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
+        match cmd.spawn() {
             Ok(child) => {
+                self.ipc = Some(ipc.clone());
                 self.last_spawn = Some(Instant::now());
                 let watcher_flag = Arc::clone(&self.stop);
                 let watcher_gen = Arc::clone(&self.gen);
