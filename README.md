@@ -31,24 +31,24 @@
 Shots are stock Kitty on Omarchy, 1080p, Berkeley Mono. The bars, wave and
 milkdrop are reading the real PipeWire sink monitor, not a mood oscillator.
 
-Needs **mpv** on `PATH`. Kitty graphics for milkdrop / ISS (cell
-fallback otherwise). PipeWire `pw-record` for the live FFT. ISS live also
-wants **yt-dlp** + **ffmpeg**.
+## Install
+
+The one-liner above checks dependencies, offers to install what is missing,
+builds, and puts `omaradio` in `~/.cargo/bin`. Add `-s -- --milkdrop` to also
+set up the MilkDrop collection. By hand:
 
 ```bash
 # Omarchy / Arch
-sudo pacman -S mpv
+sudo pacman -S --needed mpv pipewire-pulse yt-dlp ffmpeg
 git clone https://github.com/newjordan/omaradio.git
 cd omaradio
 cargo install --path . --force
 omaradio
 ```
 
-Or from the crate without installing:
-
-```bash
-cargo run --release
-```
+Needs **mpv** and Rust 1.88+. PipeWire (`pactl` / `pw-record`) feeds the live
+FFT. The ISS view wants **yt-dlp** + **ffmpeg**. Kitty graphics draw the
+milkdrop and ISS panes; other terminals get a cell fallback.
 
 ## Dial
 
@@ -129,8 +129,8 @@ Without it `M` says so and `m` keeps the eight built-in presets.
 
 - **Playback** is [mpv](https://mpv.io) over JSON IPC — ICY titles, Soma `.pls`
   failover, volume. We spawn mpv; we do not link it.
-- **Bars / wave** are a real FFT + oscilloscope of the PipeWire default-sink
-  monitor, drawn with [CrabMusic](https://github.com/newjordan/crabmusic)'s
+- **Bars / wave** are a real FFT + oscilloscope of the PipeWire monitor of
+  whichever sink mpv is playing to, drawn with [CrabMusic](https://github.com/newjordan/crabmusic)'s
   braille columns + peak gravity, MIT © 2025 Frosty40.
 - **Milkdrop** is a software feedback visualizer (eight presets, bass onset
   detection, auto-rotation) blitted with the
@@ -138,7 +138,9 @@ Without it `M` says so and `m` keeps the eight built-in presets.
 - **Collection** mode loads [projectM](https://github.com/projectM-visualizer/projectm)
   at runtime (LGPL, dlopen, optional) and renders real `.milk` presets into an
   EGL pbuffer on your GPU, then reads the frame back for Kitty.
-- **ISS** is NASA's public HD earth-view livestream (audio stays on the radio).
+- **ISS** is NASA's public HD earth-view livestream, fetched by yt-dlp on your
+  machine (audio stays on the radio). `c` cycles cams, including Sen's 4K.
+- **Control** is a Unix socket speaking JSON lines; `omaradio ctl` wraps it.
 - **Desktop** target is [Omarchy](https://omarchy.org).
 
 ## License
@@ -146,9 +148,12 @@ Without it `M` says so and `m` keeps the eight built-in presets.
 omaradio is [MIT](LICENSE) © 2026 Frosty40.
 
 CrabMusic's MIT notice is preserved in
-[`third_party/CRABMUSIC_LICENSE`](third_party/CRABMUSIC_LICENSE). mpv remains
-GPL-2.0-or-later as a separate program you install yourself.
+[`third_party/CRABMUSIC_LICENSE`](third_party/CRABMUSIC_LICENSE). mpv
+(GPL-2.0-or-later) and projectM (LGPL-2.1-or-later) remain separate programs
+and libraries you install yourself; omaradio spawns one and `dlopen`s the
+other, and links neither. MilkDrop presets belong to their authors.
 
-Not affiliated with SomaFM, WWOZ, WALM, The Jazz Groove, Jazz Radio, Omarchy,
-mpv, or NASA. SomaFM® is a trademark of SomaFM. ISS imagery remains NASA's
-public stream — we only display it.
+Not affiliated with SomaFM, WWOZ, WALM, The Jazz Groove, Jazz Radio, All
+Classical Radio, SRG SSR, Omarchy, mpv, projectM, NASA, or Sen. SomaFM® is a
+trademark of SomaFM. ISS imagery remains NASA's public stream — we only
+display it.

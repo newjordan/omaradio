@@ -1,4 +1,4 @@
-//! omaradio — a small night-dial TUI for Soma, old-time, liquid DnB, and midnight jazz.
+//! omaradio — a small night-dial TUI: Soma, old-time, liquid DnB, jazz, classical.
 
 mod app;
 mod analyze;
