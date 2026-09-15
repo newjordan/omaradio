@@ -2,7 +2,7 @@
 
 use crate::app::{App, VizKind};
 use crate::space::SpaceState;
-use crate::stations::DIAL;
+use crate::stations;
 use crate::visual;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -33,7 +33,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 Constraint::Length(3),
                 Constraint::Length(2),
                 Constraint::Min(6),
-                Constraint::Length((DIAL.len() as u16).saturating_add(2).min(12)),
+                Constraint::Length((stations::dial().len() as u16).saturating_add(2).min(12)),
                 Constraint::Length(2),
             ])
             .split(area);
@@ -73,7 +73,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Length(14), Constraint::Min(10)])
         .split(inner);
 
-    let live = app.playing.is_some() && !app.player.paused && app.player.alive;
+    let live = app.on_air().is_some() && !app.player.paused && app.player.alive;
     let badge = if !app.player.alive {
         Span::styled(
             " mpv down ",
@@ -143,10 +143,7 @@ fn draw_cinema(frame: &mut Frame, app: &mut App, area: Rect) {
         VizKind::Wave => visual::render_wave(frame.buffer_mut(), area, app.waveform(), accent),
         VizKind::Milk => {
             if !app.kitty {
-                let wave = app.waveform().to_vec();
-                let bands = app.spectrum.levels().to_vec();
-                app.milk
-                    .render_cells(frame.buffer_mut(), area, &wave, &bands, accent);
+                app.milk_cells(frame.buffer_mut(), area);
             }
         }
         VizKind::Iss if app.space_native() => {
@@ -216,10 +213,7 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
         VizKind::Wave => visual::render_wave(frame.buffer_mut(), inner, app.waveform(), accent),
         VizKind::Milk => {
             if !app.kitty {
-                let wave = app.waveform().to_vec();
-                let bands = app.spectrum.levels().to_vec();
-                app.milk
-                    .render_cells(frame.buffer_mut(), inner, &wave, &bands, accent);
+                app.milk_cells(frame.buffer_mut(), inner);
             }
         }
         VizKind::Iss if app.space_native() => {
@@ -273,8 +267,11 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut lines = Vec::with_capacity(DIAL.len());
-    for (i, station) in DIAL.iter().enumerate() {
+    let dial = stations::dial();
+    // Column wide enough for the longest name on the dial, never narrower than the classic layout.
+    let name_w = dial.iter().map(|s| s.name.chars().count()).max().unwrap_or(18).max(18);
+    let mut lines = Vec::with_capacity(dial.len());
+    for (i, station) in dial.iter().enumerate() {
         let selected = i == app.selected;
         let on_air = app.playing == Some(i);
         let marker = if on_air {
@@ -302,7 +299,7 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
         };
         lines.push(Line::from(vec![
             Span::styled(format!(" {marker} {num}  "), mark_style),
-            Span::styled(format!("{:<18}", station.name), name_style),
+            Span::styled(format!("{:<name_w$}", station.name), name_style),
             Span::styled(
                 format!("  {}  ·  {}", station.source, station.blurb),
                 Style::default().fg(if selected { PAPER } else { MUTED }),
@@ -314,9 +311,9 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_keys(frame: &mut Frame, area: Rect, fullscreen: bool) {
     let keys = if fullscreen {
-        "  f exit full   v viz   m preset   c cam   space pause   +/- vol   ? credits   q quit"
+        "  f exit full   v viz   m preset   M collection   c cam   space pause   +/- vol   ? credits   q quit"
     } else {
-        "  ↑↓/jk select   ⏎ play   space pause   +/- vol   v viz   m preset   c ISS cam   f cinema   1-7 tune   s stop   ? credits   q quit"
+        "  ↑↓/jk select   ⏎ play   space pause   +/- vol   v viz   m preset   M collection   c ISS cam   f cinema   1-9 tune   s stop   ? credits   q quit"
     };
     frame.render_widget(
         Paragraph::new(Span::styled(keys, Style::default().fg(MUTED))),
@@ -349,10 +346,10 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )),
     ];
-    for station in DIAL {
+    for station in stations::dial() {
         lines.push(Line::from(vec![
             Span::styled(
-                format!("  {:<20}", station.name),
+                format!("  {:<24}", station.name),
                 Style::default().fg(PAPER),
             ),
             Span::styled(
@@ -399,6 +396,14 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
         )),
         Line::from(Span::styled(
             "  Sen 4K      optional third ISS cam             © Sen, via YouTube",
+            Style::default().fg(PAPER),
+        )),
+        Line::from(Span::styled(
+            "  projectM    MilkDrop engine for M (optional)   LGPL, loaded at runtime",
+            Style::default().fg(PAPER),
+        )),
+        Line::from(Span::styled(
+            "  presets     Cream of the Crop pack             © their authors, via projectM",
             Style::default().fg(PAPER),
         )),
         Line::from(""),

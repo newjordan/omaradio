@@ -96,7 +96,8 @@ pub fn blit_rgb(
     cols: u16,
     rows: u16,
 ) -> io::Result<()> {
-    blit(out, rgb, width, height, col, row, cols, rows, false)
+    // Big frames (projectM at 320×180) go zlib-compressed; small ones raw.
+    blit(out, rgb, width, height, col, row, cols, rows, rgb.len() > 64 * 1024)
 }
 
 /// Letterbox into the pane so the full frame is visible (no stretch/crop).

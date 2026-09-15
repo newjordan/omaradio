@@ -25,6 +25,7 @@ pub enum Mood {
     Jazz,
     Blues,
     Brass,
+    Classical,
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {

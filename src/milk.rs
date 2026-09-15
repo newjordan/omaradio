@@ -257,8 +257,18 @@ impl Milkdrop {
             return;
         }
         let rgb = self.render_rgb(wave, bands, accent);
-        let w = PIX_W as usize;
-        let h = PIX_H as usize;
+        cells_from_rgb(buf, area, &rgb, PIX_W, PIX_H);
+    }
+}
+
+/// Quantise any top-down RGB frame to shade cells (the non-Kitty fallback).
+pub fn cells_from_rgb(buf: &mut Buffer, area: Rect, rgb: &[u8], pix_w: u32, pix_h: u32) {
+    if area.width < 2 || area.height < 2 || rgb.len() < (pix_w * pix_h * 3) as usize {
+        return;
+    }
+    {
+        let w = pix_w as usize;
+        let h = pix_h as usize;
         let cols = area.width as usize;
         let rows = area.height as usize;
         for cy in 0..rows {

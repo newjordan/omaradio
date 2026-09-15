@@ -2,10 +2,12 @@
 
 mod app;
 mod analyze;
+mod ctl;
 mod kitty;
 mod milk;
 mod mpvwatch;
 mod player;
+mod pm;
 mod space;
 mod stations;
 mod tap;
@@ -29,34 +31,110 @@ fn main() {
     }
 }
 
+const USAGE: &str = "\
+omaradio — night-dial terminal radio
+
+  omaradio                 run the radio
+  omaradio ctl …           drive a running radio (see `omaradio ctl help`)
+  omaradio --prove-tap     play a test tone and prove the FFT hears the mix
+  omaradio --version
+
+  Stations: ~/.config/omaradio/stations.json (built-ins until you add one)
+  Agents:   AGENTS.md in the repo, or `omaradio ctl help`
+";
+
 fn run() -> Result<()> {
-    if std::env::args().any(|a| a == "--prove-tap") {
-        return prove_tap();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("ctl") => return ctl::run_cli(&args[1..]),
+        Some("--prove-tap") => return prove_tap(),
+        Some("--version") | Some("-V") => {
+            println!("omaradio {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Some("--help") | Some("-h") | Some("help") => {
+            print!("{USAGE}");
+            return Ok(());
+        }
+        Some(other) => anyhow::bail!("unknown argument {other:?}\n\n{USAGE}"),
+        None => {}
     }
     let mut app = App::new()?;
+    let ctl = match ctl::CtlServer::start() {
+        Ok(c) => Some(c),
+        Err(e) => {
+            app.ctl_note = e.to_string();
+            None
+        }
+    };
+    // Children and libraries (projectM, mpv) write warnings to stderr; on a
+    // TUI that lands in the middle of the screen. Park stderr in a log for
+    // the session and restore it before we print anything ourselves.
+    let saved_stderr = park_stderr();
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
 
-    let result = event_loop(&mut terminal, &mut app);
+    let result = event_loop(&mut terminal, &mut app, ctl.as_ref());
     app.shutdown();
+    drop(ctl);
     // Close any Kitty graphics chunk still open (a killed mpv can leave one),
     // then drop every image we or mpv placed.
     let _ = kitty::close_chunk(&mut stdout());
     let _ = kitty::delete_all(&mut stdout());
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
+    restore_stderr(saved_stderr);
     result
+}
+
+/// Redirect fd 2 to `$XDG_RUNTIME_DIR/omaradio.log` (else /dev/null); return
+/// a dup of the original so it can be put back.
+fn park_stderr() -> Option<i32> {
+    use std::os::fd::AsRawFd;
+    let saved = unsafe { libc::dup(2) };
+    if saved < 0 {
+        return None;
+    }
+    let log = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(|d| std::path::PathBuf::from(d).join("omaradio.log"))
+        .and_then(|p| std::fs::File::create(p).ok())
+        .or_else(|| std::fs::OpenOptions::new().write(true).open("/dev/null").ok());
+    match log {
+        Some(f) => {
+            unsafe { libc::dup2(f.as_raw_fd(), 2) };
+            Some(saved)
+        }
+        None => {
+            unsafe { libc::close(saved) };
+            None
+        }
+    }
+}
+
+fn restore_stderr(saved: Option<i32>) {
+    if let Some(fd) = saved {
+        unsafe {
+            libc::dup2(fd, 2);
+            libc::close(fd);
+        }
+    }
 }
 
 fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
+    ctl: Option<&ctl::CtlServer>,
 ) -> Result<()> {
     let tick = Duration::from_millis(33);
     let mut last = Instant::now();
     loop {
+        if let Some(c) = ctl {
+            for (req, reply) in c.drain() {
+                let _ = reply.send(app.apply(req));
+            }
+        }
         terminal.draw(|frame| ui::draw(frame, app))?;
         app.sync_space_layout();
         if app.clear_kitty {
@@ -79,12 +157,12 @@ fn event_loop(
                     );
                 }
             } else {
-                let rgb = app.milk_frame();
+                let (rgb, w, h) = app.milk_frame();
                 let _ = kitty::blit_rgb(
                     &mut stdout(),
                     &rgb,
-                    crate::milk::PIX_W,
-                    crate::milk::PIX_H,
+                    w,
+                    h,
                     area.x,
                     area.y,
                     area.width,
@@ -137,6 +215,7 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         KeyCode::Char('?') | KeyCode::Char('h') => app.toggle_credits(),
         KeyCode::Char('v') => app.cycle_viz(),
         KeyCode::Char('m') => app.next_milk_preset(),
+        KeyCode::Char('M') => app.next_collection_preset(),
         KeyCode::Char('c') => app.cycle_iss_cam(),
         KeyCode::Char('f') => app.toggle_fullscreen(),
         KeyCode::Up | KeyCode::Char('k') => app.select_delta(-1),
@@ -156,7 +235,7 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         }
         KeyCode::Char(c) if c.is_ascii_digit() => {
             let n = c.to_digit(10).unwrap_or(0) as usize;
-            if n >= 1 && n <= crate::stations::DIAL.len() {
+            if n >= 1 && n <= crate::stations::dial().len() {
                 app.tune(n - 1);
             }
         }

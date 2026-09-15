@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <code>cargo install --path . --force && omaradio</code>
+  <code>curl -fsSL https://raw.githubusercontent.com/newjordan/omaradio/main/install.sh | sh</code>
 </p>
 
 ---
@@ -63,6 +63,8 @@ Default tune is Mission Control, with the ISS earth view up.
 | 5 | Jazz Groove | [The Jazz Groove](https://www.thejazzgroove.com) | After-midnight slow jazz, no chatter |
 | 6 | Midnight Blues | [Jazz Radio](https://www.jazzradio.fr) | Slow blues after hours |
 | 7 | WWOZ New Orleans | [WWOZ 90.7 FM](https://www.wwoz.org) | Live from the Quarter |
+| 8 | All Classical Portland | [All Classical Radio](https://www.allclassical.org) | Oregon's classical station, real hosts |
+| 9 | Radio Swiss Classic | [SRG SSR](https://www.radioswissclassic.ch) | Slow, peaceful classical, no ads, no talk |
 
 Streams belong to the broadcasters. This is an unofficial tuner. Full credits
 live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
@@ -76,13 +78,52 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
 | `space` | Pause |
 | `+/-` `←→` | Volume |
 | `[]` `n` `p` | Previous / next and play |
-| `1-7` | Jump |
+| `1-9` | Jump |
 | `v` | Cycle viz: bars → wave → milkdrop → ISS |
 | `f` | Full-window viz (milkdrop / ISS) |
-| `m` | Next milkdrop preset (8 presets; they also rotate on the beat) |
+| `m` | Next built-in milkdrop preset (8 of them; they also rotate on the beat) |
+| `M` | Next preset from the MilkDrop collection (projectM, ~9,800 presets; see below) |
 | `s` | Stop |
 | `?` / `h` | Credits |
 | `q` | Quit |
+
+## Your own dial
+
+The dial is `~/.config/omaradio/stations.json`. Add anything mpv can play:
+
+```bash
+omaradio ctl add kexp KEXP https://kexp-mp3-128.streamguys1.com/kexp128.mp3 --mood brass --tune
+omaradio ctl tune https://stream.srg-ssr.ch/m/rsj/mp3_128    # try a url without adding it
+omaradio ctl stations
+```
+
+## For agents and scripts
+
+A running omaradio listens on `$XDG_RUNTIME_DIR/omaradio.ctl.sock` and speaks
+one JSON object per line. `omaradio ctl` is the client:
+
+```bash
+omaradio ctl status            # station, title, volume, viz, whether the FFT hears the mix
+omaradio ctl tune swiss        # by id, number, name fragment, or url
+omaradio ctl volume -10
+omaradio ctl viz milkdrop && omaradio ctl preset collection
+```
+
+Every command, the status shape, and a recipe for finding stations someone
+will like (Radio Browser → `add` → `tune`) are in [AGENTS.md](AGENTS.md).
+
+## The MilkDrop collection
+
+`M` cycles projectM's **Cream of the Crop** pack, the community-curated best
+of twenty years of MilkDrop presets, rendered by the real engine on your GPU
+and blitted into the terminal. It is optional and never linked in:
+
+```bash
+scripts/setup-milkdrop.sh        # builds libprojectM 4 into ~/.local, fetches the presets (~130 MB)
+# or: install.sh --milkdrop
+```
+
+Without it `M` says so and `m` keeps the eight built-in presets.
 
 ## How it works
 
@@ -94,6 +135,9 @@ live in **[ATTRIBUTION.md](ATTRIBUTION.md)** and on the in-app `?` card.
 - **Milkdrop** is a software feedback visualizer (eight presets, bass onset
   detection, auto-rotation) blitted with the
   [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
+- **Collection** mode loads [projectM](https://github.com/projectM-visualizer/projectm)
+  at runtime (LGPL, dlopen, optional) and renders real `.milk` presets into an
+  EGL pbuffer on your GPU, then reads the frame back for Kitty.
 - **ISS** is NASA's public HD earth-view livestream (audio stays on the radio).
 - **Desktop** target is [Omarchy](https://omarchy.org).
 

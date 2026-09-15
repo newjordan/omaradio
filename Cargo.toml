@@ -1,6 +1,6 @@
 [package]
 name = "omaradio"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 authors = ["Frosty40"]
@@ -27,6 +27,7 @@ base64 = "0.22"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 rustfft = "6.2"
 libc = "0.2"
+libloading = "0.8"
 
 [profile.release]
 lto = "thin"

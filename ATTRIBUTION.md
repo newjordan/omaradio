@@ -2,6 +2,7 @@
 
 omaradio is an **unofficial** night-dial. It is not affiliated with, endorsed
 by, or a product of SomaFM, WALM Radio, The Jazz Groove, Jazz Radio, WWOZ,
+All Classical Radio, SRG SSR, projectM,
 Omarchy, mpv, Kitty, or any other named project or broadcaster. Streams, names,
 and trademarks remain their owners'. Support the stations — listen, donate,
 buy the merch.
@@ -22,6 +23,8 @@ re-encode them. If a station asks to be removed, remove it.
 | Jazz Groove | The Jazz Groove | East mix (MP3 128) | https://www.thejazzgroove.com | `http://east-mp3-128.streamthejazzgroove.com/stream` |
 | Midnight Blues | Jazz Radio | Blues channel | https://www.jazzradio.fr | `http://jazzblues.ice.infomaniak.ch/jazzblues-high.mp3` |
 | WWOZ New Orleans | New Orleans Public Radio | WWOZ 90.7 FM | https://www.wwoz.org | `https://wwoz-sc.streamguys1.com/wwoz-hi.mp3` |
+| All Classical Portland | All Classical Radio (KQAC) | All Classical | https://www.allclassical.org | `https://allclassical.streamguys1.com/ac128kmp3` |
+| Radio Swiss Classic | SRG SSR | Radio Swiss Classic | https://www.radioswissclassic.ch | `https://stream.srg-ssr.ch/m/rsc_de/mp3_128` |
 
 **SomaFM®** is a trademark of SomaFM. Space Station Soma and Mission Control
 are SomaFM channels. Listen on the official site too: https://somafm.com
@@ -43,6 +46,12 @@ Antares. It is not a SomaFM channel.
 
 Playlist (`.pls`) files are fetched from the broadcaster and played by mpv,
 including SomaFM's Icecast failover list.
+
+## Radio Browser
+
+`AGENTS.md` shows agents how to find streams through the community directory
+at https://www.radio-browser.info. omaradio itself never calls it; the dial is
+a local JSON file.
 
 ## Visual language — CrabMusic
 
@@ -89,6 +98,25 @@ The fullscreen visualizer is an original software feedback renderer in the
 spirit of MilkDrop (Ryan Geiss / Winamp). It is not MilkDrop, not projectM,
 and not Nullsoft. No preset files are loaded.
 
+
+## MilkDrop collection — projectM and preset authors
+
+`M` uses **projectM** (https://github.com/projectM-visualizer/projectm), the
+open-source MilkDrop engine, LGPL-2.1-or-later. omaradio does not link it:
+`scripts/setup-milkdrop.sh` builds it into your `~/.local` and the app loads
+it with `dlopen` at runtime when you ask for the collection. It stays a
+separate, replaceable library; omaradio remains MIT.
+
+The presets are projectM's **Cream of the Crop** pack
+(https://github.com/projectM-visualizer/presets-cream-of-the-crop) and the
+**MilkDrop texture pack**
+(https://github.com/projectM-visualizer/presets-milkdrop-texture-pack). Each
+`.milk` file is the work of its named author (Geiss, Flexi, martin, suksma,
+Rovastar, Zylot, and hundreds more); the packs are redistributed by the
+projectM project. They are not part of omaradio, are fetched by you, and the
+preset's file name (the author's name) is shown while it plays.
+
+MilkDrop itself is Ryan Geiss / Nullsoft; projectM is a reimplementation.
 
 ## Earth from space — NASA ISS
 
