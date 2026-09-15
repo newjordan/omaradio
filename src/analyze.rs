@@ -17,6 +17,7 @@ pub struct Analyzer {
     pending: Vec<f32>,
     scratch: Vec<Complex<f32>>,
     sample_rate: u32,
+    waveform: Vec<f32>,
 }
 
 impl Analyzer {
@@ -30,7 +31,12 @@ impl Analyzer {
             pending: Vec::with_capacity(FFT_SIZE * 2),
             scratch: vec![Complex::new(0.0, 0.0); FFT_SIZE],
             sample_rate: sample_rate.max(1),
+            waveform: vec![0.0; 256],
         }
+    }
+
+    pub fn waveform(&self) -> &[f32] {
+        &self.waveform
     }
 
     pub fn push(&mut self, samples: &[f32]) {
@@ -54,6 +60,7 @@ impl Analyzer {
                 &mut self.scratch,
                 self.sample_rate,
             ));
+            self.waveform = downsample(windowed, 256);
             self.pending.drain(..HOP);
         }
         latest
@@ -115,6 +122,15 @@ pub fn map_log_bands(mags: &[f32], sample_rate: u32) -> [f32; BAR_COUNT] {
     out
 }
 
+fn downsample(src: &[f32], n: usize) -> Vec<f32> {
+    if src.is_empty() || n == 0 {
+        return vec![0.0; n];
+    }
+    (0..n)
+        .map(|i| src[i * src.len() / n])
+        .collect()
+}
+
 pub fn hann(n: usize) -> Vec<f32> {
     (0..n)
         .map(|i| {
@@ -124,6 +140,7 @@ pub fn hann(n: usize) -> Vec<f32> {
         .collect()
 }
 
+#[cfg(test)]
 pub fn sine_wave(freq: f32, sample_rate: u32, n: usize) -> Vec<f32> {
     (0..n)
         .map(|i| {

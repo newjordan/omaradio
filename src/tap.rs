@@ -49,7 +49,7 @@ impl OutputTap {
         let stop_t = Arc::clone(&stop);
         let buf_t = Arc::clone(&buf);
         let thread = thread::Builder::new()
-            .name("openradio-tap".into())
+            .name("omaradio-tap".into())
             .spawn(move || reader_loop(stdout, buf_t, stop_t))
             .ok()?;
         Some(Self {

@@ -130,6 +130,63 @@ impl Spectrum {
             }
         }
     }
+
+    pub fn levels(&self) -> &[f32] {
+        &self.bars
+    }
+}
+
+pub fn render_wave(buf: &mut Buffer, area: Rect, wave: &[f32], accent: (u8, u8, u8)) {
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
+    let width = area.width as usize;
+    let height = area.height as usize;
+    let mut dots = vec![0u8; width * height];
+    let mut colors = vec![(0u8, 0u8, 0u8); width * height];
+    let dot_w = width * 2;
+    let dot_h = height * 4;
+    let mid = dot_h / 2;
+    let n = wave.len();
+    let mut prev_y = mid;
+    for x in 0..dot_w {
+        let sample = if n == 0 {
+            0.0
+        } else {
+            wave[x * n / dot_w.max(1)]
+        };
+        let y = (mid as f32 - sample * (dot_h as f32 * 0.42))
+            .clamp(0.0, (dot_h.saturating_sub(1)) as f32) as usize;
+        let color = bar_color(x * BAR_COUNT / dot_w.max(1), BAR_COUNT, sample.abs(), accent);
+        let (y0, y1) = if y < prev_y { (y, prev_y) } else { (prev_y, y) };
+        for py in y0..=y1 {
+            set_dot(&mut dots, &mut colors, width, height, x, py, color);
+        }
+        prev_y = y;
+    }
+    for x in 0..dot_w {
+        set_dot(
+            &mut dots,
+            &mut colors,
+            width,
+            height,
+            x,
+            mid,
+            (accent.0 / 4, accent.1 / 4, accent.2 / 4),
+        );
+    }
+    for cy in 0..height {
+        for cx in 0..width {
+            let ch = braille_char(dots[cy * width + cx]);
+            if ch == ' ' {
+                continue;
+            }
+            let (r, g, b) = colors[cy * width + cx];
+            let cell = &mut buf[(area.x + cx as u16, area.y + cy as u16)];
+            cell.set_char(ch);
+            cell.set_fg(Color::Rgb(r, g, b));
+        }
+    }
 }
 
 fn set_dot(

@@ -1,7 +1,9 @@
-//! openradio — a small night-dial TUI for Soma, old-time, liquid DnB, and midnight jazz.
+//! omaradio — a small night-dial TUI for Soma, old-time, liquid DnB, and midnight jazz.
 
 mod app;
 mod analyze;
+mod kitty;
+mod milk;
 mod player;
 mod stations;
 mod tap;
@@ -20,7 +22,7 @@ use std::time::{Duration, Instant};
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("openradio: {err:#}");
+        eprintln!("omaradio: {err:#}");
         std::process::exit(1);
     }
 }
@@ -33,7 +35,7 @@ fn run() -> Result<()> {
     terminal.clear()?;
 
     let result = event_loop(&mut terminal, &mut app);
-
+    let _ = kitty::delete_all(&mut stdout());
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
     result
@@ -47,6 +49,24 @@ fn event_loop(
     let mut last = Instant::now();
     loop {
         terminal.draw(|frame| ui::draw(frame, app))?;
+        if app.clear_kitty {
+            let _ = kitty::delete_all(&mut stdout());
+            app.clear_kitty = false;
+        }
+        if app.wants_kitty_blit() {
+            let rgb = app.milk_frame();
+            let area = app.viz_area;
+            let _ = kitty::blit_rgb(
+                &mut stdout(),
+                &rgb,
+                crate::milk::PIX_W,
+                crate::milk::PIX_H,
+                area.x,
+                area.y,
+                area.width,
+                area.height,
+            );
+        }
 
         let timeout = tick.saturating_sub(last.elapsed());
         if event::poll(timeout)? {
@@ -87,9 +107,11 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
     }
     match code {
         KeyCode::Char('q') | KeyCode::Char('Q') => app.should_quit = true,
-        KeyCode::Esc if app.show_credits => app.show_credits = false,
+        KeyCode::Esc if app.fullscreen => app.toggle_fullscreen(),
         KeyCode::Esc => app.should_quit = true,
         KeyCode::Char('?') | KeyCode::Char('h') => app.toggle_credits(),
+        KeyCode::Char('v') => app.cycle_viz(),
+        KeyCode::Char('f') => app.toggle_fullscreen(),
         KeyCode::Up | KeyCode::Char('k') => app.select_delta(-1),
         KeyCode::Down | KeyCode::Char('j') => app.select_delta(1),
         KeyCode::Enter | KeyCode::Char('l') => app.tune_selected(),

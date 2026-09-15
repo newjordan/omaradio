@@ -1,35 +1,12 @@
 # Attributions
 
-openradio is an **unofficial** night-dial. It is not affiliated with, endorsed
+omaradio is an **unofficial** night-dial. It is not affiliated with, endorsed
 by, or a product of SomaFM, WALM Radio, The Jazz Groove, Jazz Radio, WWOZ,
-Omarchy, mpv, or any other named project or broadcaster. Streams, names, and
-trademarks remain their owners'. Support the stations — listen, donate, buy
-the merch.
-
-The name **openradio** is Pierre's. This Omarchy TUI is a separate night-dial
-built in that spirit — not a fork of his player, not his official app. Go
-listen to the original too.
+Omarchy, mpv, Kitty, or any other named project or broadcaster. Streams, names,
+and trademarks remain their owners'. Support the stations — listen, donate,
+buy the merch.
 
 Press `?` in the app for the same card.
-
-## The name — Pierre / PierrunoYT
-
-**OpenRadio** is Pierre's ([@PierrunoYT](https://github.com/PierrunoYT)).
-He shipped the name first: a free, no-accounts, no-ads worldwide radio
-player in the browser, plus the globe at openradio.world.
-
-This repo is `openradio_omarchy` — a tiny terminal dial for Omarchy. We
-did not copy his HTML/CSS/JS. We did take the name as a nod, and we owe
-him the mention.
-
-| Project | What it is | URL |
-|---------|------------|-----|
-| OpenRadio | Browser player, 30k+ stations via Radio Browser | https://github.com/PierrunoYT/OpenRadio |
-| openradio.world | Globe UI over Radio Garden | https://github.com/PierrunoYT/openradio.world |
-| radio-stations | Station catalog work | https://github.com/PierrunoYT/radio-stations |
-
-Pierre's OpenRadio is MIT, Copyright (c) 2026 PierrunoYT. That notice is
-preserved in [`third_party/PIERRUNOYT_OPENRADIO_LICENSE`](third_party/PIERRUNOYT_OPENRADIO_LICENSE).
 
 ## Broadcasters
 
@@ -77,32 +54,46 @@ are adapted from **CrabMusic**, an ASCII music visualizer:
 - Copyright (c) 2025 Frosty40
 
 The MIT notice from CrabMusic is included in
-[`third_party/CRABMUSIC_LICENSE`](third_party/CRABMUSIC_LICENSE). openradio
+[`third_party/CRABMUSIC_LICENSE`](third_party/CRABMUSIC_LICENSE). omaradio
 reimplements a small slice of that visual language (Unicode braille 2×4
-columns, attack/release smoothing, peak gravity). It does not vendor
-CrabMusic source, capture loopback audio, or claim CrabMusic compatibility.
+columns, attack/release smoothing, peak gravity) and drives it from a live
+PipeWire sink-monitor FFT.
 
 ## Playback — mpv
 
-Audio is **mpv** talking JSON IPC (`--input-ipc-server`). openradio does not
+Audio is **mpv** talking JSON IPC (`--input-ipc-server`). omaradio does not
 link libmpv.
 
 - Project: https://mpv.io
 - Source: https://github.com/mpv-player/mpv
 - License: GPL-2.0-or-later (mpv itself)
-- Copyright: mpv developers, FFmpeg / Libav contributors, and upstream
-  codec projects mpv uses to decode the stream
 
 Install mpv from your OS. On Omarchy / Arch: `pacman -S mpv`.
+
+## Capture — PipeWire
+
+Spectrum, oscilloscope, and milkdrop read the default sink monitor via
+`pw-record` (PipeWire). That is the speaker mix.
+
+- https://pipewire.org
+
+## Kitty graphics
+
+The milkdrop blit uses the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
+Kitty is Kovid Goyal's terminal. omaradio is not a Kitty product. Other
+terminals get a cell-level plasma fallback.
+
+## Milkdrop / Winamp
+
+The fullscreen visualizer is an original software feedback renderer in the
+spirit of MilkDrop (Ryan Geiss / Winamp). It is not MilkDrop, not projectM,
+and not Nullsoft. No preset files are loaded.
 
 ## Desktop — Omarchy
 
 Built to live in a tiling terminal on **Omarchy**, an Arch-based desktop.
 
 - https://omarchy.org
-- Omarchy is independent of this radio. "omarchy" in the repo name means
-  "this is the terminal radio I run on Omarchy," not an official Omarchy
-  product.
 
 ## Rust crates
 
@@ -115,9 +106,11 @@ on crates.io:
 | [crossterm](https://github.com/crossterm-rs/crossterm) | raw mode, keys, alternate screen | MIT |
 | [serde](https://serde.rs) / [serde_json](https://github.com/serde-rs/json) | mpv IPC payloads | MIT OR Apache-2.0 |
 | [anyhow](https://github.com/dtolnay/anyhow) | error reporting | MIT OR Apache-2.0 |
+| [rustfft](https://github.com/ejmahler/RustFFT) | live spectrum | MIT OR Apache-2.0 |
+| [base64](https://docs.rs/base64) | Kitty graphics payloads | MIT OR Apache-2.0 |
 
-Unicode **Braille Patterns** (U+2800–U+28FF) are used for the spectrum. They
-are part of the Unicode Standard.
+Unicode **Braille Patterns** (U+2800–U+28FF) are used for the spectrum and
+oscilloscope. They are part of the Unicode Standard.
 
 ## Protocols and infrastructure
 
@@ -139,8 +132,8 @@ app only tunes SomaFM's published stream.
 ## What we are not claiming
 
 - We do not rebroadcast, archive, or sell the audio.
-- We do not use official SomaFM, WWOZ, Jazz Radio, WALM, Jazz Groove, or
-  Omarchy logos or brand assets.
+- We do not use official SomaFM, WWOZ, Jazz Radio, WALM, Jazz Groove,
+  Omarchy, or Kitty logos or brand assets.
 - Station names in the dial are used to identify the stream you are about
   to hear.
 - If you ship a fork, keep this file, `LICENSE`, and

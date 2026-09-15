@@ -1,7 +1,8 @@
 //! Night-dial layout.
 
-use crate::app::App;
+use crate::app::{App, VizKind};
 use crate::stations::DIAL;
+use crate::visual;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -15,29 +16,45 @@ const LINE: Color = Color::Rgb(58, 50, 62);
 const LIVE: Color = Color::Rgb(255, 92, 70);
 const OK: Color = Color::Rgb(90, 210, 140);
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     frame.render_widget(
         Block::default().style(Style::default().bg(INK).fg(PAPER)),
         area,
     );
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(2),
-            Constraint::Min(6),
-            Constraint::Length((DIAL.len() as u16).saturating_add(2).min(12)),
-            Constraint::Length(2),
-        ])
-        .split(area);
+    if app.fullscreen {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Min(6),
+                Constraint::Length(1),
+            ])
+            .split(area);
+        draw_header(frame, app, chunks[0]);
+        draw_now(frame, app, chunks[1]);
+        draw_viz(frame, app, chunks[2]);
+        draw_keys(frame, chunks[3], true);
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(2),
+                Constraint::Min(6),
+                Constraint::Length((DIAL.len() as u16).saturating_add(2).min(12)),
+                Constraint::Length(2),
+            ])
+            .split(area);
 
-    draw_header(frame, app, chunks[0]);
-    draw_now(frame, app, chunks[1]);
-    draw_viz(frame, app, chunks[2]);
-    draw_dial(frame, app, chunks[3]);
-    draw_keys(frame, chunks[4]);
+        draw_header(frame, app, chunks[0]);
+        draw_now(frame, app, chunks[1]);
+        draw_viz(frame, app, chunks[2]);
+        draw_dial(frame, app, chunks[3]);
+        draw_keys(frame, chunks[4], false);
+    }
     if app.show_credits {
         draw_credits(frame, area);
     }
@@ -49,8 +66,8 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let accent = Color::Rgb(accent.0, accent.1, accent.2);
     let vol = app.player.volume.clamp(0.0, 100.0);
     let title = match on {
-        Some(s) => format!(" OPENRADIO  ·  {}", s.name.to_uppercase()),
-        None => " OPENRADIO  ·  NIGHT DIAL".into(),
+        Some(s) => format!(" OMARADIO  ·  {}", s.name.to_uppercase()),
+        None => " OMARADIO  ·  NIGHT DIAL".into(),
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -99,14 +116,32 @@ fn draw_now(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn draw_viz(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
     let accent = app.on_air().unwrap_or_else(|| app.current()).accent;
+    let title = match app.viz {
+        VizKind::Bars => " bars ",
+        VizKind::Wave => " wave ",
+        VizKind::Milk => " milkdrop ",
+    };
     let block = Block::default()
-        .borders(Borders::LEFT.union(Borders::RIGHT))
-        .border_style(Style::default().fg(LINE));
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(LINE))
+        .title(Span::styled(title, Style::default().fg(MUTED)));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    app.spectrum.render(frame.buffer_mut(), inner, accent);
+    app.viz_area = inner;
+    match app.viz {
+        VizKind::Bars => app.spectrum.render(frame.buffer_mut(), inner, accent),
+        VizKind::Wave => visual::render_wave(frame.buffer_mut(), inner, app.waveform(), accent),
+        VizKind::Milk => {
+            if !app.kitty {
+                let wave = app.waveform().to_vec();
+                let bands = app.spectrum.levels().to_vec();
+                app.milk
+                    .render_cells(frame.buffer_mut(), inner, &wave, &bands, accent);
+            }
+        }
+    }
 }
 
 fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
@@ -150,8 +185,12 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn draw_keys(frame: &mut Frame, area: Rect) {
-    let keys = "  ↑↓/jk select   ⏎ play   space pause   +/- vol   [] prev/next   1-7 tune   s stop   ? credits   q quit";
+fn draw_keys(frame: &mut Frame, area: Rect, fullscreen: bool) {
+    let keys = if fullscreen {
+        "  f exit milkdrop   v viz   space pause   +/- vol   ? credits   q quit"
+    } else {
+        "  ↑↓/jk select   ⏎ play   space pause   +/- vol   v viz   f milkdrop   1-7 tune   s stop   ? credits   q quit"
+    };
     frame.render_widget(
         Paragraph::new(Span::styled(keys, Style::default().fg(MUTED))),
         area,
@@ -159,7 +198,7 @@ fn draw_keys(frame: &mut Frame, area: Rect) {
 }
 
 fn draw_credits(frame: &mut Frame, area: Rect) {
-    let popup = centered(area, 78, 26);
+    let popup = centered(area, 78, 20);
     frame.render_widget(Clear, popup);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -176,26 +215,7 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
 
     let mut lines = vec![
         Line::from(Span::styled(
-            "OPENRADIO  ·  unofficial night dial  ·  not affiliated with any station",
-            Style::default().fg(MUTED),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "The name",
-            Style::default()
-                .fg(Color::Rgb(255, 196, 80))
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            "  Pierre / PierrunoYT  shipped OpenRadio first. This is the Omarchy dial.",
-            Style::default().fg(PAPER),
-        )),
-        Line::from(Span::styled(
-            "  https://github.com/PierrunoYT/OpenRadio",
-            Style::default().fg(MUTED),
-        )),
-        Line::from(Span::styled(
-            "  https://github.com/PierrunoYT/openradio.world",
+            "OMARADIO  ·  unofficial night dial  ·  not affiliated with any station",
             Style::default().fg(MUTED),
         )),
         Line::from(""),

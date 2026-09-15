@@ -28,7 +28,7 @@ impl MpvPlayer {
         let dir = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
-        let sock_path = dir.join(format!("openradio-{}.sock", std::process::id()));
+        let sock_path = dir.join(format!("omaradio-{}.sock", std::process::id()));
         if sock_path.exists() {
             let _ = std::fs::remove_file(&sock_path);
         }
@@ -48,7 +48,7 @@ impl MpvPlayer {
                 "--demuxer-max-bytes=12MiB",
                 "--demuxer-readahead-secs=8",
                 "--volume=70",
-                "--audio-client-name=openradio",
+                "--audio-client-name=omaradio",
                 "--msg-level=all=no",
             ])
             .arg(format!("--input-ipc-server={}", sock_path.display()))

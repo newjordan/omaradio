@@ -1,11 +1,20 @@
 //! Terminal radio state.
 
 use crate::analyze::Analyzer;
+use crate::milk::Milkdrop;
 use crate::player::MpvPlayer;
 use crate::stations::{self, Station, DIAL};
 use crate::tap::OutputTap;
 use crate::visual::Spectrum;
 use anyhow::Result;
+use ratatui::layout::Rect;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VizKind {
+    Bars,
+    Wave,
+    Milk,
+}
 
 pub struct App {
     pub selected: usize,
@@ -15,6 +24,12 @@ pub struct App {
     pub status: String,
     pub show_credits: bool,
     pub should_quit: bool,
+    pub viz: VizKind,
+    pub fullscreen: bool,
+    pub milk: Milkdrop,
+    pub kitty: bool,
+    pub viz_area: Rect,
+    pub clear_kitty: bool,
     tap: Option<OutputTap>,
     analyzer: Analyzer,
     pcm: Vec<f32>,
@@ -33,6 +48,12 @@ impl App {
             status: "idle — pick a station and hit enter".into(),
             show_credits: false,
             should_quit: false,
+            viz: VizKind::Bars,
+            fullscreen: false,
+            milk: Milkdrop::new(),
+            kitty: crate::kitty::available(),
+            viz_area: Rect::default(),
+            clear_kitty: false,
             analyzer: Analyzer::new(sample_rate),
             tap,
             pcm: Vec::with_capacity(4096),
@@ -49,6 +70,10 @@ impl App {
 
     pub fn on_air(&self) -> Option<&'static Station> {
         self.playing.map(|i| self.station(i))
+    }
+
+    pub fn waveform(&self) -> &[f32] {
+        self.analyzer.waveform()
     }
 
     pub fn select_delta(&mut self, delta: isize) {
@@ -98,14 +123,58 @@ impl App {
         self.show_credits = !self.show_credits;
     }
 
+    pub fn cycle_viz(&mut self) {
+        self.viz = match self.viz {
+            VizKind::Bars => VizKind::Wave,
+            VizKind::Wave => VizKind::Milk,
+            VizKind::Milk => {
+                if self.kitty {
+                    self.clear_kitty = true;
+                }
+                VizKind::Bars
+            }
+        };
+        let name = match self.viz {
+            VizKind::Bars => "bars",
+            VizKind::Wave => "wave",
+            VizKind::Milk => "milkdrop",
+        };
+        self.status = format!("viz · {name}");
+    }
+
+    pub fn toggle_fullscreen(&mut self) {
+        self.fullscreen = !self.fullscreen;
+        if self.fullscreen {
+            self.viz = VizKind::Milk;
+            self.status = "milkdrop · full".into();
+        } else {
+            if self.kitty {
+                self.clear_kitty = true;
+            }
+            self.status = "dial".into();
+        }
+    }
+
     pub fn volume_delta(&mut self, delta: f64) {
         if let Err(err) = self.player.bump_volume(delta) {
             self.status = format!("volume: {err}");
         }
     }
 
-    pub fn tick(&mut self, _dt: f32) {
+    pub fn wants_kitty_blit(&self) -> bool {
+        self.kitty && self.viz == VizKind::Milk && !self.show_credits
+    }
+
+    pub fn milk_frame(&mut self) -> Vec<u8> {
+        let accent = self.on_air().unwrap_or_else(|| self.current()).accent;
+        let wave = self.analyzer.waveform().to_vec();
+        let bands = self.spectrum.levels().to_vec();
+        self.milk.render_rgb(&wave, &bands, accent)
+    }
+
+    pub fn tick(&mut self, dt: f32) {
         self.player.poll();
+        self.milk.tick(dt);
 
         let bands = if let Some(tap) = &self.tap {
             tap.drain(&mut self.pcm);
