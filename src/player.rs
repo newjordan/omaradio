@@ -85,6 +85,10 @@ impl MpvPlayer {
         Ok(player)
     }
 
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     fn observe(&mut self, name: &str) -> Result<()> {
         let id = self.req;
         self.req += 1;

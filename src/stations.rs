@@ -89,7 +89,7 @@ pub const DIAL: &[Station] = &[
 
 pub fn default_index() -> usize {
     DIAL.iter()
-        .position(|s| s.id == "space")
+        .position(|s| s.id == "mission")
         .unwrap_or(0)
 }
 
@@ -126,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn default_tunes_space_station() {
-        assert_eq!(DIAL[default_index()].id, "space");
+    fn default_tunes_mission_control() {
+        assert_eq!(DIAL[default_index()].id, "mission");
     }
 }

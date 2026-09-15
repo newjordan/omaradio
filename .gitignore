@@ -5,5 +5,4 @@
 *.log
 *.swp
 .DS_Store
-openradio-*.sock
 omaradio-*.sock

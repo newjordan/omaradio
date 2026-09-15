@@ -89,6 +89,19 @@ The fullscreen visualizer is an original software feedback renderer in the
 spirit of MilkDrop (Ryan Geiss / Winamp). It is not MilkDrop, not projectM,
 and not Nullsoft. No preset files are loaded.
 
+
+## Earth from space — NASA ISS + NOAA GOES
+
+ISS mode defaults to NASA's official ISS live camera (no tracker HUD).
+`c` cycles NASA HD truss cams, then Sen 4K (that one has overlays).
+
+GOES mode fetches NOAA's public GeoColor full disk JPEG:
+
+- `https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/678x678.jpg`
+
+NASA and NOAA imagery is generally public domain in the US. omaradio is
+not a NASA or NOAA product. We do not rehost the streams.
+
 ## Desktop — Omarchy
 
 Built to live in a tiling terminal on **Omarchy**, an Arch-based desktop.

@@ -3,8 +3,9 @@
 use crate::analyze::Analyzer;
 use crate::milk::Milkdrop;
 use crate::player::MpvPlayer;
+use crate::space::{SpaceCam, SpaceFeed};
 use crate::stations::{self, Station, DIAL};
-use crate::tap::OutputTap;
+use crate::tap::{MixHud, OutputTap};
 use crate::visual::Spectrum;
 use anyhow::Result;
 use ratatui::layout::Rect;
@@ -14,6 +15,22 @@ pub enum VizKind {
     Bars,
     Wave,
     Milk,
+    Iss,
+    Earth,
+}
+
+impl VizKind {
+    fn blit(self) -> bool {
+        matches!(self, VizKind::Milk | VizKind::Iss | VizKind::Earth)
+    }
+
+    fn space_feed(self) -> Option<SpaceFeed> {
+        match self {
+            VizKind::Iss => Some(SpaceFeed::Iss),
+            VizKind::Earth => Some(SpaceFeed::Earth),
+            _ => None,
+        }
+    }
 }
 
 pub struct App {
@@ -30,17 +47,22 @@ pub struct App {
     pub kitty: bool,
     pub viz_area: Rect,
     pub clear_kitty: bool,
-    tap: Option<OutputTap>,
+    space: SpaceCam,
+    last_space_seq: u64,
+    tap: OutputTap,
     analyzer: Analyzer,
     pcm: Vec<f32>,
+    mix_rms: f32,
+    peak_bar: usize,
+    fft_ok: bool,
 }
 
 impl App {
     pub fn new() -> Result<Self> {
         let selected = stations::default_index();
-        let tap = OutputTap::try_open();
-        let sample_rate = tap.as_ref().map(|t| t.sample_rate).unwrap_or(44_100);
-        Ok(Self {
+        let tap = OutputTap::new();
+        let sample_rate = tap.sample_rate;
+        let mut app = Self {
             selected,
             playing: None,
             spectrum: Spectrum::new(),
@@ -48,16 +70,30 @@ impl App {
             status: "idle — pick a station and hit enter".into(),
             show_credits: false,
             should_quit: false,
-            viz: VizKind::Bars,
+            viz: VizKind::Iss,
             fullscreen: false,
             milk: Milkdrop::new(),
             kitty: crate::kitty::available(),
             viz_area: Rect::default(),
             clear_kitty: false,
+            space: SpaceCam::new(),
+            last_space_seq: 0,
             analyzer: Analyzer::new(sample_rate),
             tap,
             pcm: Vec::with_capacity(4096),
-        })
+            mix_rms: 0.0,
+            peak_bar: 0,
+            fft_ok: false,
+        };
+        app.tap.bind_pid(app.player.pid());
+        app.space.set(SpaceFeed::Iss, app.kitty);
+        app.tune(app.selected);
+        Ok(app)
+    }
+
+    pub fn shutdown(&mut self) {
+        self.space.stop();
+        let _ = self.player.stop();
     }
 
     pub fn station(&self, idx: usize) -> &'static Station {
@@ -74,6 +110,26 @@ impl App {
 
     pub fn waveform(&self) -> &[f32] {
         self.analyzer.waveform()
+    }
+
+    pub fn tap_live(&self) -> bool {
+        self.tap.active() && self.mix_rms > 1e-5
+    }
+
+    pub fn mix_hud(&self) -> MixHud {
+        MixHud {
+            sink: self.tap.sink_name().unwrap_or("-").to_string(),
+            backend: self.tap.backend_name().to_string(),
+            rms: self.mix_rms,
+            peak_bar: self.peak_bar,
+            fft_ok: self.fft_ok,
+            err: self.tap.last_err(),
+            samples: 0,
+        }
+    }
+
+    pub fn mix_hud_line(&self) -> String {
+        self.mix_hud().line()
     }
 
     pub fn select_delta(&mut self, delta: isize) {
@@ -123,30 +179,74 @@ impl App {
         self.show_credits = !self.show_credits;
     }
 
+    pub fn cycle_iss_cam(&mut self) {
+        if self.viz != VizKind::Iss {
+            return;
+        }
+        let name = self.space.cycle_cam();
+        self.status = format!("ISS cam · {name}");
+    }
+
     pub fn cycle_viz(&mut self) {
-        self.viz = match self.viz {
+        let next = match self.viz {
             VizKind::Bars => VizKind::Wave,
             VizKind::Wave => VizKind::Milk,
-            VizKind::Milk => {
-                if self.kitty {
-                    self.clear_kitty = true;
-                }
-                VizKind::Bars
-            }
+            VizKind::Milk => VizKind::Iss,
+            VizKind::Iss => VizKind::Earth,
+            VizKind::Earth => VizKind::Bars,
         };
-        let name = match self.viz {
+        self.set_viz(next);
+    }
+
+    fn set_viz(&mut self, next: VizKind) {
+        if self.viz.blit() && !next.blit() && self.kitty {
+            self.clear_kitty = true;
+        }
+        self.viz = next;
+        if let Some(feed) = next.space_feed() {
+            self.last_space_seq = 0;
+            self.space.set(feed, self.kitty);
+        } else {
+            self.space.stop();
+        }
+        let name = match next {
             VizKind::Bars => "bars",
             VizKind::Wave => "wave",
             VizKind::Milk => "milkdrop",
+            VizKind::Iss => "ISS earth view",
+            VizKind::Earth => "GOES full disk",
         };
         self.status = format!("viz · {name}");
+    }
+
+    /// Skip to the next milkdrop preset; switches the viz to milkdrop if needed.
+    pub fn next_milk_preset(&mut self) {
+        if self.viz != VizKind::Milk {
+            self.set_viz(VizKind::Milk);
+        }
+        let name = self.milk.next_preset();
+        self.status = format!("milkdrop · {name}");
+    }
+
+    pub fn milk_preset(&self) -> &'static str {
+        self.milk.preset_name()
     }
 
     pub fn toggle_fullscreen(&mut self) {
         self.fullscreen = !self.fullscreen;
         if self.fullscreen {
-            self.viz = VizKind::Milk;
-            self.status = "milkdrop · full".into();
+            if !self.viz.blit() {
+                self.set_viz(VizKind::Milk);
+            }
+            self.status = format!(
+                "full · {}",
+                match self.viz {
+                    VizKind::Milk => "milkdrop",
+                    VizKind::Iss => "ISS",
+                    VizKind::Earth => "GOES",
+                    _ => "viz",
+                }
+            );
         } else {
             if self.kitty {
                 self.clear_kitty = true;
@@ -162,7 +262,38 @@ impl App {
     }
 
     pub fn wants_kitty_blit(&self) -> bool {
-        self.kitty && self.viz == VizKind::Milk && !self.show_credits
+        self.kitty && self.viz.blit() && !self.show_credits && !self.space.is_native()
+    }
+
+    pub fn space_native(&self) -> bool {
+        self.space.is_native()
+    }
+
+    pub fn sync_space_layout(&mut self) {
+        if self.viz == VizKind::Iss {
+            self.space.layout(self.viz_area);
+        }
+    }
+
+    pub fn space_frame(&self) -> Option<crate::space::SpaceFrame> {
+        self.space.snapshot()
+    }
+
+    pub fn space_status(&self) -> (crate::space::SpaceState, String) {
+        self.space.status()
+    }
+
+    pub fn space_source(&self) -> String {
+        self.space.source_name()
+    }
+
+    pub fn take_space_blit(&mut self) -> Option<crate::space::SpaceFrame> {
+        let frame = self.space.snapshot()?;
+        if frame.seq == self.last_space_seq {
+            return None;
+        }
+        self.last_space_seq = frame.seq;
+        Some(frame)
     }
 
     pub fn milk_frame(&mut self) -> Vec<u8> {
@@ -174,15 +305,17 @@ impl App {
 
     pub fn tick(&mut self, dt: f32) {
         self.player.poll();
-        self.milk.tick(dt);
 
-        let bands = if let Some(tap) = &self.tap {
-            tap.drain(&mut self.pcm);
-            self.analyzer.ingest(&self.pcm)
-        } else {
-            None
-        };
+        self.tap.set_want_audio(self.playing.is_some() && !self.player.paused);
+        self.tap.drain(&mut self.pcm);
+        self.mix_rms = crate::analyze::rms(&self.pcm);
+        let bands = self.analyzer.ingest(&self.pcm);
+        if let Some(ref b) = bands {
+            self.peak_bar = crate::analyze::peak_index(b);
+            self.fft_ok = b.iter().copied().fold(0.0_f32, f32::max) > 0.04;
+        }
         self.spectrum.tick(bands.as_ref().map(|b| b.as_slice()));
+        self.milk.tick(dt, self.spectrum.levels());
 
         if let Some(err) = self.player.last_error.take() {
             self.status = format!("stream: {err}");

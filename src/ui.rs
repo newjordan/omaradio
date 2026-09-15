@@ -1,6 +1,7 @@
 //! Night-dial layout.
 
 use crate::app::{App, VizKind};
+use crate::space::SpaceState;
 use crate::stations::DIAL;
 use crate::visual;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -24,19 +25,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
 
     if app.fullscreen {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Length(1),
-                Constraint::Min(6),
-                Constraint::Length(1),
-            ])
-            .split(area);
-        draw_header(frame, app, chunks[0]);
-        draw_now(frame, app, chunks[1]);
-        draw_viz(frame, app, chunks[2]);
-        draw_keys(frame, chunks[3], true);
+        draw_cinema(frame, app, area);
     } else {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -86,9 +75,15 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
 
     let live = app.playing.is_some() && !app.player.paused && app.player.alive;
     let badge = if !app.player.alive {
-        Span::styled(" mpv down ", Style::default().fg(LIVE).add_modifier(Modifier::BOLD))
+        Span::styled(
+            " mpv down ",
+            Style::default().fg(LIVE).add_modifier(Modifier::BOLD),
+        )
     } else if live {
-        Span::styled(" ● LIVE ", Style::default().fg(LIVE).add_modifier(Modifier::BOLD))
+        Span::styled(
+            " ● LIVE ",
+            Style::default().fg(LIVE).add_modifier(Modifier::BOLD),
+        )
     } else if app.player.paused {
         Span::styled(" ■ PAUSE", Style::default().fg(Color::Rgb(255, 196, 80)))
     } else {
@@ -116,20 +111,107 @@ fn draw_now(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
+fn paint_mix_hud(frame: &mut Frame, app: &App, area: Rect) -> Rect {
+    if !matches!(app.viz, VizKind::Bars | VizKind::Wave | VizKind::Milk) || area.height < 2 {
+        return area;
+    }
+    let hud_area = Rect {
+        x: area.x,
+        y: area.y + area.height - 1,
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            app.mix_hud_line(),
+            Style::default().fg(MUTED),
+        ))),
+        hud_area,
+    );
+    Rect {
+        height: area.height.saturating_sub(1),
+        ..area
+    }
+}
+
+fn draw_cinema(frame: &mut Frame, app: &mut App, area: Rect) {
+    let accent = app.on_air().unwrap_or_else(|| app.current()).accent;
+    let area = paint_mix_hud(frame, app, area);
+    app.viz_area = area;
+    match app.viz {
+        VizKind::Bars => app.spectrum.render(frame.buffer_mut(), area, accent),
+        VizKind::Wave => visual::render_wave(frame.buffer_mut(), area, app.waveform(), accent),
+        VizKind::Milk => {
+            if !app.kitty {
+                let wave = app.waveform().to_vec();
+                let bands = app.spectrum.levels().to_vec();
+                app.milk
+                    .render_cells(frame.buffer_mut(), area, &wave, &bands, accent);
+            }
+        }
+        VizKind::Iss if app.space_native() => {
+            crate::space::skip_rect(frame.buffer_mut(), area);
+        }
+        VizKind::Iss | VizKind::Earth => {
+            let frame_rgb = app.space_frame();
+            if app.space_native() {
+                crate::space::skip_rect(frame.buffer_mut(), area);
+            } else if !app.kitty || frame_rgb.is_none() {
+                crate::space::render_cells(frame.buffer_mut(), area, frame_rgb.as_ref());
+            }
+        }
+    }
+}
+
 fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
     let accent = app.on_air().unwrap_or_else(|| app.current()).accent;
+    let (state, detail) = if matches!(app.viz, VizKind::Iss | VizKind::Earth) {
+        app.space_status()
+    } else {
+        (SpaceState::Idle, String::new())
+    };
     let title = match app.viz {
-        VizKind::Bars => " bars ",
-        VizKind::Wave => " wave ",
-        VizKind::Milk => " milkdrop ",
+        VizKind::Bars => format!(" bars ·{} ", app.mix_hud_line().trim()),
+        VizKind::Wave => format!(" wave ·{} ", app.mix_hud_line().trim()),
+        VizKind::Milk => format!(" milkdrop · {} ·{} ", app.milk_preset(), app.mix_hud_line().trim()),
+        VizKind::Iss => format!(" ISS · {} ", app.space_source()),
+        VizKind::Earth => " earth · NOAA GOES-19 ".into(),
+    };
+    let title = if matches!(app.viz, VizKind::Iss | VizKind::Earth) {
+        format!("{}{} ", title.trim_end(), state_badge(state))
+    } else {
+        title
     };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(LINE))
-        .title(Span::styled(title, Style::default().fg(MUTED)));
+        .title(Span::styled(
+            title,
+            Style::default()
+                .fg(state_color(state))
+                .add_modifier(Modifier::BOLD),
+        ));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    let inner = paint_mix_hud(frame, app, inner);
     app.viz_area = inner;
+    // No frame yet or an error: say so truthfully instead of showing old pixels.
+    if matches!(app.viz, VizKind::Iss | VizKind::Earth)
+        && matches!(
+            state,
+            SpaceState::Pending | SpaceState::Error | SpaceState::Stale
+        )
+    {
+        let msg = if detail.is_empty() {
+            state_text(state).to_string()
+        } else if matches!(state, SpaceState::Pending | SpaceState::Stale) {
+            detail
+        } else {
+            format!("{} — {}", state_text(state), detail)
+        };
+        crate::space::render_status(frame.buffer_mut(), inner, &msg, state_color(state));
+        return;
+    }
     match app.viz {
         VizKind::Bars => app.spectrum.render(frame.buffer_mut(), inner, accent),
         VizKind::Wave => visual::render_wave(frame.buffer_mut(), inner, app.waveform(), accent),
@@ -141,6 +223,46 @@ fn draw_viz(frame: &mut Frame, app: &mut App, area: Rect) {
                     .render_cells(frame.buffer_mut(), inner, &wave, &bands, accent);
             }
         }
+        VizKind::Iss if app.space_native() => {
+            crate::space::skip_rect(frame.buffer_mut(), inner);
+        }
+        VizKind::Iss | VizKind::Earth => {
+            let frame_rgb = app.space_frame();
+            if !app.kitty || frame_rgb.is_none() {
+                crate::space::render_cells(frame.buffer_mut(), inner, frame_rgb.as_ref());
+            }
+        }
+    }
+}
+
+fn state_color(state: SpaceState) -> Color {
+    match state {
+        SpaceState::Live | SpaceState::Local => OK,
+        SpaceState::Pending => Color::Rgb(255, 196, 80),
+        SpaceState::Error => LIVE,
+        SpaceState::Stale => Color::Rgb(255, 140, 60),
+        SpaceState::Idle => MUTED,
+    }
+}
+
+fn state_badge(state: SpaceState) -> String {
+    match state {
+        SpaceState::Live => " · live",
+        SpaceState::Local => " · local",
+        SpaceState::Pending => " · pending",
+        SpaceState::Stale => " · stale",
+        SpaceState::Error => " · error",
+        SpaceState::Idle => "",
+    }
+    .into()
+}
+
+fn state_text(state: SpaceState) -> &'static str {
+    match state {
+        SpaceState::Pending => "locking on…",
+        SpaceState::Stale => "signal stalled — last frame is old",
+        SpaceState::Error => "signal error",
+        _ => "waiting",
     }
 }
 
@@ -156,7 +278,13 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
     for (i, station) in DIAL.iter().enumerate() {
         let selected = i == app.selected;
         let on_air = app.playing == Some(i);
-        let marker = if on_air { "▶" } else if selected { "›" } else { " " };
+        let marker = if on_air {
+            "▶"
+        } else if selected {
+            "›"
+        } else {
+            " "
+        };
         let num = format!("{}", i + 1);
         let accent = Color::Rgb(station.accent.0, station.accent.1, station.accent.2);
         let name_style = if selected {
@@ -187,9 +315,9 @@ fn draw_dial(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_keys(frame: &mut Frame, area: Rect, fullscreen: bool) {
     let keys = if fullscreen {
-        "  f exit milkdrop   v viz   space pause   +/- vol   ? credits   q quit"
+        "  f exit full   v viz   m preset   c cam   space pause   +/- vol   ? credits   q quit"
     } else {
-        "  ↑↓/jk select   ⏎ play   space pause   +/- vol   v viz   f milkdrop   1-7 tune   s stop   ? credits   q quit"
+        "  ↑↓/jk select   ⏎ play   space pause   +/- vol   v viz   m preset   c ISS cam   f cinema   1-7 tune   s stop   ? credits   q quit"
     };
     frame.render_widget(
         Paragraph::new(Span::styled(keys, Style::default().fg(MUTED))),
@@ -228,7 +356,10 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
     ];
     for station in DIAL {
         lines.push(Line::from(vec![
-            Span::styled(format!("  {:<20}", station.name), Style::default().fg(PAPER)),
+            Span::styled(
+                format!("  {:<20}", station.name),
+                Style::default().fg(PAPER),
+            ),
             Span::styled(
                 format!("{}  {}", station.source, station.homepage),
                 Style::default().fg(MUTED),
@@ -265,6 +396,14 @@ fn draw_credits(frame: &mut Frame, area: Rect) {
         )),
         Line::from(Span::styled(
             "  Omarchy     the desktop this was built for     https://omarchy.org",
+            Style::default().fg(PAPER),
+        )),
+        Line::from(Span::styled(
+            "  NASA ISS    official HD earth-view livestream  public NASA stream",
+            Style::default().fg(PAPER),
+        )),
+        Line::from(Span::styled(
+            "  NOAA GOES   geocolor full disk                 public domain",
             Style::default().fg(PAPER),
         )),
         Line::from(""),

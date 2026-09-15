@@ -122,6 +122,23 @@ pub fn map_log_bands(mags: &[f32], sample_rate: u32) -> [f32; BAR_COUNT] {
     out
 }
 
+pub fn peak_index(bands: &[f32]) -> usize {
+    bands
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
+pub fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum: f32 = samples.iter().map(|s| s * s).sum();
+    (sum / samples.len() as f32).sqrt()
+}
+
 fn downsample(src: &[f32], n: usize) -> Vec<f32> {
     if src.is_empty() || n == 0 {
         return vec![0.0; n];
@@ -140,7 +157,6 @@ pub fn hann(n: usize) -> Vec<f32> {
         .collect()
 }
 
-#[cfg(test)]
 pub fn sine_wave(freq: f32, sample_rate: u32, n: usize) -> Vec<f32> {
     (0..n)
         .map(|i| {
