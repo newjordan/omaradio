@@ -204,7 +204,7 @@ mod tests {
     fn cell_aspect_is_width_over_height() {
         let a = cell_aspect_from(Some((14, 29)));
         assert!((a - 14.0 / 29.0).abs() < 1e-5, "got {a}");
-        assert!((a - 0.48275862).abs() < 1e-5);
+        assert!((a - 0.482_758_6).abs() < 1e-5);
         assert_eq!(cell_aspect_from(None), CELL_ASPECT_FALLBACK);
         assert_eq!(cell_aspect_from(Some((0, 29))), CELL_ASPECT_FALLBACK);
     }

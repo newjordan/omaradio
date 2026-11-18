@@ -243,22 +243,6 @@ impl Milkdrop {
         }
         rgb
     }
-
-    /// Non-Kitty fallback: the same preset frame, quantised to shade cells.
-    pub fn render_cells(
-        &mut self,
-        buf: &mut Buffer,
-        area: Rect,
-        wave: &[f32],
-        bands: &[f32],
-        accent: (u8, u8, u8),
-    ) {
-        if area.width < 2 || area.height < 2 {
-            return;
-        }
-        let rgb = self.render_rgb(wave, bands, accent);
-        cells_from_rgb(buf, area, &rgb, PIX_W, PIX_H);
-    }
 }
 
 /// Quantise any top-down RGB frame to shade cells (the non-Kitty fallback).

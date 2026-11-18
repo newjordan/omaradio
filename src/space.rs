@@ -547,6 +547,9 @@ fn unique_ipc_path() -> PathBuf {
 #[derive(Clone, Copy)]
 enum NativeVo {
     Kitty,
+    /// `--vo=null` shape: only the tests build this (cell fallback never
+    /// spawns a native mpv); it pins the base argv every VO shares.
+    #[allow(dead_code)]
     Null,
 }
 
@@ -583,7 +586,7 @@ fn native_mpv_cli_args(area: Rect, ipc: &std::path::Path, media: &str, vo: Nativ
         "--cache=no".into(),
         "--demuxer-readahead-secs=0.4".into(),
         "--vd-lavc-threads=1".into(),
-        format!("--ytdl-format={ISS_YTDL_FORMAT}").into(),
+        format!("--ytdl-format={ISS_YTDL_FORMAT}"),
         "--loop-playlist=inf".into(),
         "--msg-level=all=no".into(),
         format!("--input-ipc-server={}", ipc.display()),

@@ -148,6 +148,9 @@ on crates.io:
 | [anyhow](https://github.com/dtolnay/anyhow) | error reporting | MIT OR Apache-2.0 |
 | [rustfft](https://github.com/ejmahler/RustFFT) | live spectrum | MIT OR Apache-2.0 |
 | [base64](https://docs.rs/base64) | Kitty graphics payloads | MIT OR Apache-2.0 |
+| [flate2](https://github.com/rust-lang/flate2_rs) | Kitty zlib-compressed blits | MIT OR Apache-2.0 |
+| [libc](https://github.com/rust-lang/libc) | PDEATHSIG, winsize ioctl, stderr parking | MIT OR Apache-2.0 |
+| [libloading](https://github.com/nagisa/rust_libloading) | dlopen for optional projectM | ISC |
 
 Unicode **Braille Patterns** (U+2800–U+28FF) are used for the spectrum and
 oscilloscope. They are part of the Unicode Standard.

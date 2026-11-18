@@ -263,9 +263,9 @@ fn bar_color(idx: usize, n: usize, intensity: f32, accent: (u8, u8, u8)) -> (u8,
 
 fn peak_color(accent: (u8, u8, u8)) -> (u8, u8, u8) {
     (
-        accent.0.saturating_add(40).min(255),
-        accent.1.saturating_add(40).min(255),
-        accent.2.saturating_add(40).min(255),
+        accent.0.saturating_add(40),
+        accent.1.saturating_add(40),
+        accent.2.saturating_add(40),
     )
 }
 
