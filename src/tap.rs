@@ -36,7 +36,6 @@ pub struct MixHud {
     pub peak_bar: usize,
     pub fft_ok: bool,
     pub err: String,
-    pub samples: usize,
 }
 
 impl MixHud {
@@ -74,8 +73,6 @@ pub struct OutputTap {
     mpv_pid: Option<u32>,
     want_audio: bool,
     restarts: VecDeque<Instant>,
-    last_rms: f32,
-    last_samples: usize,
     pub sample_rate: u32,
 }
 
@@ -101,8 +98,6 @@ impl OutputTap {
             mpv_pid: None,
             want_audio: true,
             restarts: VecDeque::new(),
-            last_rms: 0.0,
-            last_samples: 0,
             sample_rate: SAMPLE_RATE,
         };
         tap.ensure();
@@ -116,10 +111,6 @@ impl OutputTap {
 
     pub fn set_want_audio(&mut self, want: bool) {
         self.want_audio = want;
-    }
-
-    pub fn active(&self) -> bool {
-        self.proc.is_some()
     }
 
     pub fn sink_name(&self) -> Option<&str> {
@@ -137,10 +128,6 @@ impl OutputTap {
             .unwrap_or_default()
     }
 
-    pub fn last_rms(&self) -> f32 {
-        self.last_rms
-    }
-
     pub fn drain(&mut self, dest: &mut Vec<f32>) {
         self.ensure();
         dest.clear();
@@ -150,8 +137,6 @@ impl OutputTap {
                 ring.clear();
             }
         }
-        self.last_samples = dest.len();
-        self.last_rms = rms_of(dest);
         if !dest.is_empty() {
             self.got_audio = true;
         }
@@ -365,8 +350,8 @@ fn reader_loop(stdout: std::process::ChildStdout, buf: Arc<Mutex<Vec<f32>>>, sto
                     continue;
                 }
                 if let Ok(mut ring) = buf.lock() {
-                    for chunk in bytes[..usable].chunks_exact(4) {
-                        let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                    for chunk in bytes[..usable].as_chunks::<4>().0 {
+                        let sample = f32::from_le_bytes(*chunk);
                         if sample.is_finite() {
                             ring.push(sample);
                         }
@@ -406,55 +391,25 @@ fn stderr_loop(
     }
 }
 
+/// The sink omaradio is playing into: the one its sink-input is attached to,
+/// else the default. Delegates to `resolve_playback_sink` so the tested
+/// resolution is the one that runs.
 fn playback_sink(prefer_pid: Option<u32>) -> Option<String> {
-    let sinks = short_sinks();
-    if let Some(idx) = omaradio_sink_index(prefer_pid) {
-        if let Some(name) = sinks
-            .iter()
-            .find(|(i, _)| *i == idx)
-            .map(|(_, n)| n.clone())
-        {
-            return Some(name);
-        }
-    }
-    default_sink()
+    let inputs = pactl_text(&["list", "sink-inputs"]);
+    let sinks = pactl_text(&["list", "short", "sinks"]);
+    let default = pactl_text(&["get-default-sink"]);
+    resolve_playback_sink(&inputs, &sinks, &default, prefer_pid)
 }
 
-fn default_sink() -> Option<String> {
-    let out = Command::new("pactl").arg("get-default-sink").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let sink = String::from_utf8(out.stdout).ok()?;
-    let sink = sink.trim();
-    if sink.is_empty() {
-        None
-    } else {
-        Some(sink.to_string())
-    }
-}
-
-fn short_sinks() -> Vec<(u32, String)> {
-    let out = Command::new("pactl")
-        .args(["list", "short", "sinks"])
-        .output();
-    match out {
-        Ok(out) if out.status.success() => {
-            parse_short_sinks(&String::from_utf8_lossy(&out.stdout))
-        }
-        _ => Vec::new(),
-    }
-}
-
-fn omaradio_sink_index(prefer_pid: Option<u32>) -> Option<u32> {
-    let out = Command::new("pactl")
-        .args(["list", "sink-inputs"])
+/// Raw stdout of a `pactl` invocation, empty when pactl is missing or fails.
+fn pactl_text(args: &[&str]) -> String {
+    Command::new("pactl")
+        .args(args)
         .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    parse_omaradio_sink_index(&String::from_utf8_lossy(&out.stdout), prefer_pid)
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 pub fn pulse_monitor_name(sink: &str) -> String {
@@ -512,7 +467,6 @@ pub fn parse_omaradio_sink_index(text: &str, prefer_pid: Option<u32>) -> Option<
         }
         if let Some(rest) = t.strip_prefix("Sink:") {
             cur.sink = rest
-                .trim()
                 .split_whitespace()
                 .next()
                 .and_then(|s| s.parse().ok());
@@ -534,6 +488,8 @@ pub fn parse_omaradio_sink_index(text: &str, prefer_pid: Option<u32>) -> Option<
     found.last().map(|(s, _)| *s)
 }
 
+/// Pure form of `playback_sink`: resolve a sink name from captured `pactl`
+/// output (sink-inputs listing, short sinks listing, default sink name).
 pub fn resolve_playback_sink(
     inputs: &str,
     sinks: &str,
@@ -552,14 +508,6 @@ pub fn resolve_playback_sink(
     } else {
         Some(d.to_string())
     }
-}
-
-fn rms_of(samples: &[f32]) -> f32 {
-    if samples.is_empty() {
-        return 0.0;
-    }
-    let sum: f32 = samples.iter().map(|s| s * s).sum();
-    (sum / samples.len() as f32).sqrt()
 }
 
 #[cfg(test)]

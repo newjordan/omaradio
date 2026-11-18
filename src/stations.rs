@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn validate_rejects_bad_specs() {
         let ok = StationSpec { id: "x".into(), name: "X".into(), url: "https://x".into(), blurb: String::new(), source: String::new(), homepage: String::new(), mood: String::new(), accent: None };
-        assert!(validate(&[ok.clone()]).is_ok());
+        assert!(validate(std::slice::from_ref(&ok)).is_ok());
         let mut bad = ok.clone(); bad.url = "ftp://x".into();
         assert!(validate(&[bad]).is_err());
         let mut bad = ok.clone(); bad.id = "has space".into();

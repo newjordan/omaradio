@@ -102,10 +102,6 @@ impl CtlServer {
         Ok(Self { rx, path })
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.path
-    }
-
     /// Non-blocking: everything that arrived since the last tick.
     pub fn drain(&self) -> Vec<Inbound> {
         let mut out = Vec::new();

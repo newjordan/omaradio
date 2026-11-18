@@ -278,12 +278,6 @@ impl ProjectM {
         &self.name
     }
 
-    pub fn prev(&mut self) -> &str {
-        let n = self.presets.len().max(1);
-        self.load((self.idx + n - 1) % n, true);
-        &self.name
-    }
-
     /// Jump to the first preset whose file name contains `needle`.
     pub fn find(&mut self, needle: &str) -> Option<&str> {
         let n = needle.to_ascii_lowercase();

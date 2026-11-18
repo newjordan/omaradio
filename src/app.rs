@@ -128,10 +128,6 @@ impl App {
         self.analyzer.waveform()
     }
 
-    pub fn tap_live(&self) -> bool {
-        self.tap.active() && self.mix_rms > 1e-5
-    }
-
     pub fn mix_hud(&self) -> MixHud {
         MixHud {
             sink: self.tap.sink_name().unwrap_or("-").to_string(),
@@ -140,7 +136,6 @@ impl App {
             peak_bar: self.peak_bar,
             fft_ok: self.fft_ok,
             err: self.tap.last_err(),
-            samples: 0,
         }
     }
 
