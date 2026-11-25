@@ -88,6 +88,8 @@ struct TapProc {
 }
 
 impl OutputTap {
+    /// Opens a capture process. Not `Default`: constructing it is not free.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut tap = Self {
             proc: None,
@@ -144,10 +146,8 @@ impl OutputTap {
 
     fn ensure(&mut self) {
         let dead = self.proc.as_mut().map(TapProc::dead).unwrap_or(true);
-        let stale_silent = !dead
-            && self.want_audio
-            && !self.got_audio
-            && self.started.elapsed() >= SILENT_RESTART;
+        let stale_silent =
+            !dead && self.want_audio && !self.got_audio && self.started.elapsed() >= SILENT_RESTART;
         if !dead && !stale_silent && self.last_check.elapsed() < RETARGET_EVERY {
             return;
         }
@@ -338,7 +338,11 @@ fn spawn_cmd(bin: &str, args: &[&str]) -> Option<Child> {
         .ok()
 }
 
-fn reader_loop(stdout: std::process::ChildStdout, buf: Arc<Mutex<Vec<f32>>>, stop: Arc<AtomicBool>) {
+fn reader_loop(
+    stdout: std::process::ChildStdout,
+    buf: Arc<Mutex<Vec<f32>>>,
+    stop: Arc<AtomicBool>,
+) {
     let mut reader = BufReader::new(stdout);
     let mut bytes = [0u8; 4096];
     while !stop.load(Ordering::Relaxed) {
@@ -367,11 +371,7 @@ fn reader_loop(stdout: std::process::ChildStdout, buf: Arc<Mutex<Vec<f32>>>, sto
     }
 }
 
-fn stderr_loop(
-    stderr: std::process::ChildStderr,
-    tail: Arc<Mutex<String>>,
-    stop: Arc<AtomicBool>,
-) {
+fn stderr_loop(stderr: std::process::ChildStderr, tail: Arc<Mutex<String>>, stop: Arc<AtomicBool>) {
     let mut reader = BufReader::new(stderr);
     let mut line = String::new();
     while !stop.load(Ordering::Relaxed) {
@@ -466,10 +466,7 @@ pub fn parse_omaradio_sink_index(text: &str, prefer_pid: Option<u32>) -> Option<
             continue;
         }
         if let Some(rest) = t.strip_prefix("Sink:") {
-            cur.sink = rest
-                .split_whitespace()
-                .next()
-                .and_then(|s| s.parse().ok());
+            cur.sink = rest.split_whitespace().next().and_then(|s| s.parse().ok());
         }
         let is_name = t.contains("application.name") || t.contains("node.name");
         if is_name && t.contains("omaradio") {
@@ -600,9 +597,15 @@ Sink Input #9
     #[test]
     fn prefer_pid_picks_that_omaradio() {
         let sink = resolve_playback_sink(INPUTS_WITH_PID, SINKS, "default", Some(111)).unwrap();
-        assert!(sink.contains("SPDIF"), "pid 111 should be SPDIF, got {sink}");
+        assert!(
+            sink.contains("SPDIF"),
+            "pid 111 should be SPDIF, got {sink}"
+        );
         let sink = resolve_playback_sink(INPUTS_WITH_PID, SINKS, "default", Some(222)).unwrap();
-        assert!(sink.contains("BTD_600"), "pid 222 should be BTD, got {sink}");
+        assert!(
+            sink.contains("BTD_600"),
+            "pid 222 should be BTD, got {sink}"
+        );
     }
 
     #[test]

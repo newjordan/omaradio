@@ -101,7 +101,7 @@ pub fn map_log_bands(mags: &[f32], sample_rate: u32) -> [f32; BAR_COUNT] {
         return out;
     }
 
-    for i in 0..BAR_COUNT {
+    for (i, slot) in out.iter_mut().enumerate() {
         let t0 = i as f32 / BAR_COUNT as f32;
         let t1 = (i + 1) as f32 / BAR_COUNT as f32;
         let f0 = FREQ_MIN * (FREQ_MAX / FREQ_MIN).powf(t0);
@@ -116,8 +116,9 @@ pub fn map_log_bands(mags: &[f32], sample_rate: u32) -> [f32; BAR_COUNT] {
         }
         let rms = if n > 0.0 { (acc / n).sqrt() } else { 0.0 };
         let db = 20.0 * rms.max(1e-9).log10();
-        out[i] = ((db - DB_FLOOR) / (0.0 - DB_FLOOR)).clamp(0.0, 1.0);
-        out[i] = out[i].powf(0.65);
+        *slot = ((db - DB_FLOOR) / (0.0 - DB_FLOOR))
+            .clamp(0.0, 1.0)
+            .powf(0.65);
     }
     out
 }
@@ -143,9 +144,7 @@ fn downsample(src: &[f32], n: usize) -> Vec<f32> {
     if src.is_empty() || n == 0 {
         return vec![0.0; n];
     }
-    (0..n)
-        .map(|i| src[i * src.len() / n])
-        .collect()
+    (0..n).map(|i| src[i * src.len() / n]).collect()
 }
 
 pub fn hann(n: usize) -> Vec<f32> {
@@ -206,6 +205,34 @@ mod tests {
         let bass = peak_bar(&bands_of(80.0));
         let treble = peak_bar(&bands_of(4000.0));
         assert!(bass < treble, "bass={bass} treble={treble}");
+    }
+
+    #[test]
+    fn peaks_move_right_as_frequency_rises() {
+        let peaks: Vec<_> = [80.0, 440.0, 4000.0, 8000.0]
+            .into_iter()
+            .map(|hz| peak_bar(&bands_of(hz)))
+            .collect();
+        for pair in peaks.windows(2) {
+            assert!(pair[0] < pair[1], "peaks {peaks:?} are not ordered");
+        }
+        assert!(
+            (38..48).contains(&peaks[3]),
+            "8 kHz peaked at {}, outside the treble bars the prove-tap checks",
+            peaks[3]
+        );
+    }
+
+    #[test]
+    fn rms_and_hann_and_short_ingest() {
+        assert_eq!(rms(&[]), 0.0);
+        assert!((rms(&[1.0, -1.0, 1.0, -1.0]) - 1.0).abs() < 1e-6);
+        let w = hann(16);
+        assert!(w[0].abs() < 1e-5 && w[15].abs() < 0.2);
+        assert!(w[8] > 0.9);
+        let mut a = Analyzer::new(44_100);
+        assert!(a.ingest(&[0.1; 10]).is_none());
+        assert!(a.ingest(&[0.1; FFT_SIZE]).is_some());
     }
 
     #[test]

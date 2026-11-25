@@ -1,17 +1,43 @@
 //! Terminal radio state.
 
 use crate::analyze::Analyzer;
+use crate::ctl::Request;
 use crate::milk::Milkdrop;
 use crate::player::MpvPlayer;
-use crate::space::{SpaceCam, SpaceFeed};
-use crate::ctl::Request;
 use crate::pm::ProjectM;
+use crate::space::{SpaceCam, SpaceFeed};
 use crate::stations::{self, Station};
-use serde_json::{json, Value};
 use crate::tap::{MixHud, OutputTap};
 use crate::visual::Spectrum;
 use anyhow::Result;
 use ratatui::layout::Rect;
+use serde_json::{json, Value};
+use std::time::{Duration, Instant};
+
+/// How long a one-shot message (viz change, tune error, cam name) stays
+/// in front of the transport line. The transport line is rewritten every tick,
+/// so without this those messages never survive a frame.
+pub const NOTICE_TTL: Duration = Duration::from_millis(3200);
+
+/// Space and `ctl toggle` pause a loaded stream. A url tune counts as loaded
+/// even though it has no dial index. Otherwise the key tunes the selection.
+pub fn toggle_pauses(on_air: bool, idle: bool) -> bool {
+    on_air && !idle
+}
+
+/// The spectrum tap follows a dial station or a url tune, and goes quiet
+/// when that stream is paused or stopped.
+pub fn wants_mix(on_air: bool, paused: bool, idle: bool) -> bool {
+    on_air && !paused && !idle
+}
+
+/// Pick the line the UI and the status JSON should show.
+pub fn compose_status(notice: Option<(&str, Duration)>, transport: &str) -> String {
+    match notice {
+        Some((msg, age)) if age < NOTICE_TTL && !msg.is_empty() => msg.to_string(),
+        _ => transport.to_string(),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VizKind {
@@ -61,10 +87,13 @@ pub struct App {
     pm_error: Option<String>,
     /// true = milkdrop shows the projectM collection, false = built-ins.
     collection: bool,
-    /// A stream tuned by url that is not on the dial.
-    adhoc: Option<&'static Station>,
+    /// A stream tuned by url that is not on the dial. Owned so retuning does
+    /// not leak a station on every call.
+    adhoc: Option<Station>,
     /// Why the control socket is not up, if it is not.
     pub ctl_note: String,
+    /// Transient message shown instead of the transport line until it expires.
+    notice: Option<(String, Instant)>,
 }
 
 impl App {
@@ -99,6 +128,7 @@ impl App {
             collection: false,
             adhoc: None,
             ctl_note: String::new(),
+            notice: None,
         };
         app.tap.bind_pid(app.player.pid());
         app.space.set(SpaceFeed::Iss, app.kitty);
@@ -111,17 +141,44 @@ impl App {
         let _ = self.player.stop();
     }
 
-    pub fn station(&self, idx: usize) -> &'static Station {
+    pub fn station(&self, idx: usize) -> Station {
         let d = stations::dial();
-        &d[idx.min(d.len() - 1)]
+        d.get(idx)
+            .or_else(|| d.last())
+            .cloned()
+            .unwrap_or_else(Station::unknown)
     }
 
-    pub fn current(&self) -> &'static Station {
+    pub fn current(&self) -> Station {
         self.station(self.selected)
     }
 
-    pub fn on_air(&self) -> Option<&'static Station> {
-        self.playing.map(|i| self.station(i)).or(self.adhoc)
+    pub fn on_air(&self) -> Option<Station> {
+        if let Some(i) = self.playing {
+            return Some(self.station(i));
+        }
+        self.adhoc.clone()
+    }
+
+    pub fn adhoc_station(&self) -> Option<&Station> {
+        self.adhoc.as_ref()
+    }
+
+    fn banner(&mut self, msg: impl Into<String>) {
+        self.notice = Some((msg.into(), Instant::now()));
+    }
+
+    pub fn shown_status(&self) -> String {
+        let notice = self
+            .notice
+            .as_ref()
+            .map(|(msg, at)| (msg.as_str(), at.elapsed()));
+        compose_status(notice, &self.status)
+    }
+
+    /// A loaded, not-yet-stopped stream: dial row or a url tune.
+    fn stream_loaded(&self) -> bool {
+        toggle_pauses(self.on_air().is_some(), self.player.props.idle)
     }
 
     pub fn waveform(&self) -> &[f32] {
@@ -154,82 +211,93 @@ impl App {
     }
 
     pub fn tune(&mut self, idx: usize) {
-        if idx >= stations::dial().len() {
+        let d = stations::dial();
+        if idx >= d.len() {
             return;
         }
         self.adhoc = None;
         self.selected = idx;
-        let station = self.station(idx);
-        match self.player.play_url(station.url) {
+        let station = d[idx].clone();
+        match self.player.play_url(&station.url) {
             Ok(()) => {
                 self.playing = Some(idx);
+                self.notice = None;
                 self.status = format!("tuning {}…", station.name);
             }
             Err(err) => {
-                self.status = format!("tune failed: {err}");
+                self.banner(format!("tune failed: {err}"));
             }
         }
     }
 
     /// Play any http(s) stream that is not on the dial (agents do this a lot).
     pub fn tune_url(&mut self, url: &str) {
-        let host = url
-            .split("//")
-            .nth(1)
-            .unwrap_or(url)
-            .split('/')
-            .next()
-            .unwrap_or(url)
-            .to_string();
-        let leak = |s: &str| -> &'static str { Box::leak(s.to_string().into_boxed_str()) };
-        let st: &'static Station = Box::leak(Box::new(Station {
-            id: "url",
-            name: leak(&host),
-            blurb: "stream by url",
-            source: leak(&host),
-            homepage: leak(url),
-            url: leak(url),
+        let host = stations::stream_host(url);
+        let st = Station {
+            id: "url".into(),
+            name: host.clone(),
+            blurb: "stream by url".into(),
+            source: host,
+            homepage: url.to_string(),
+            url: url.to_string(),
             mood: crate::visual::Mood::Space,
             accent: (120, 170, 255),
-        }));
+        };
         match self.player.play_url(url) {
             Ok(()) => {
                 self.playing = None;
-                self.adhoc = Some(st);
                 self.status = format!("tuning {}…", st.name);
+                self.adhoc = Some(st);
+                self.notice = None;
             }
-            Err(err) => self.status = format!("tune failed: {err}"),
+            Err(err) => self.banner(format!("tune failed: {err}")),
         }
     }
 
     /// After the dial changed shape, point `playing`/`selected` at the same
     /// stations by id rather than by the old positions.
-    fn reindex(&mut self, playing_id: Option<&'static str>, selected_id: &'static str, was_on_air: Option<&'static Station>) {
+    fn reindex(
+        &mut self,
+        playing_id: Option<String>,
+        selected_id: String,
+        was_on_air: Option<Station>,
+    ) {
         let d = stations::dial();
-        self.playing = playing_id.and_then(|id| d.iter().position(|s| s.id == id));
+        self.playing = playing_id
+            .as_deref()
+            .and_then(|id| d.iter().position(|s| s.id == id));
         if self.playing.is_none() && playing_id.is_some() {
             // The station that is on air was removed; keep showing it truthfully.
             self.adhoc = was_on_air;
         }
+        if d.is_empty() {
+            self.selected = 0;
+            return;
+        }
         self.selected = d
             .iter()
             .position(|s| s.id == selected_id)
-            .unwrap_or_else(|| self.selected.min(d.len().saturating_sub(1)));
+            .unwrap_or_else(|| self.selected.min(d.len() - 1));
     }
 
     pub fn toggle_pause(&mut self) {
-        if self.playing.is_none() {
+        // A url tune has `playing == None` and lives in `adhoc`. Treating
+        // "no dial index" as "nothing is playing" used to retune the
+        // selection instead of pausing that stream.
+        if !self.stream_loaded() {
             self.tune_selected();
             return;
         }
         if let Err(err) = self.player.toggle_pause() {
-            self.status = format!("pause failed: {err}");
+            self.banner(format!("pause failed: {err}"));
         }
     }
 
     pub fn stop(&mut self) {
         let _ = self.player.stop();
         self.playing = None;
+        self.adhoc = None;
+        self.notice = None;
         self.status = "stopped".into();
     }
 
@@ -246,7 +314,7 @@ impl App {
             return;
         }
         let name = self.space.cycle_cam();
-        self.status = format!("ISS cam · {name}");
+        self.banner(format!("ISS cam · {name}"));
     }
 
     pub fn cycle_viz(&mut self) {
@@ -278,7 +346,7 @@ impl App {
             VizKind::Milk => "milkdrop",
             VizKind::Iss => "ISS earth view",
         };
-        self.status = format!("viz · {name}");
+        self.banner(format!("viz · {name}"));
     }
 
     /// `m`: next built-in preset; switches the viz to milkdrop, and back to
@@ -292,11 +360,11 @@ impl App {
             if self.kitty {
                 self.clear_kitty = true;
             }
-            self.status = format!("milkdrop · {}", self.milk.preset_name());
+            self.banner(format!("milkdrop · {}", self.milk.preset_name()));
             return;
         }
         let name = self.milk.next_preset();
-        self.status = format!("milkdrop · {name}");
+        self.banner(format!("milkdrop · {name}"));
     }
 
     /// `M`: the MilkDrop collection through projectM. The first press brings
@@ -309,7 +377,12 @@ impl App {
             match ProjectM::new(crate::pm::W, crate::pm::H) {
                 Ok(pm) => {
                     self.pm_error = None;
-                    self.status = format!("milkdrop · {} · {} presets on {}", pm.name(), pm.count(), pm.renderer);
+                    self.banner(format!(
+                        "milkdrop · {} · {} presets on {}",
+                        pm.name(),
+                        pm.count(),
+                        pm.renderer
+                    ));
                     self.pm = Some(pm);
                     self.collection = true;
                     if self.kitty {
@@ -318,7 +391,7 @@ impl App {
                 }
                 Err(e) => {
                     self.collection = false;
-                    self.status = format!("collection unavailable · {e}");
+                    self.banner(format!("collection unavailable · {e}"));
                     self.pm_error = Some(e);
                 }
             }
@@ -329,12 +402,20 @@ impl App {
             if self.kitty {
                 self.clear_kitty = true;
             }
-            let name = self.pm.as_ref().map(|p| p.name().to_string()).unwrap_or_default();
-            self.status = format!("milkdrop · {name}");
+            let name = self
+                .pm
+                .as_ref()
+                .map(|p| p.name().to_string())
+                .unwrap_or_default();
+            self.banner(format!("milkdrop · {name}"));
             return;
         }
-        let name = self.pm.as_mut().map(|p| p.next().to_string()).unwrap_or_default();
-        self.status = format!("milkdrop · {name}");
+        let name = self
+            .pm
+            .as_mut()
+            .map(|p| p.next().to_string())
+            .unwrap_or_default();
+        self.banner(format!("milkdrop · {name}"));
     }
 
     pub fn milk_preset(&self) -> String {
@@ -366,8 +447,12 @@ impl App {
     /// One control request in, one JSON answer out. See AGENTS.md.
     pub fn apply(&mut self, req: Request) -> Value {
         let err = |m: String| json!({ "ok": false, "error": m });
-        let dial_ids = |me: &Self| -> (Option<&'static str>, &'static str, Option<&'static Station>) {
-            (me.playing.map(|i| me.station(i).id), me.station(me.selected).id, me.on_air())
+        let dial_ids = |me: &Self| -> (Option<String>, String, Option<Station>) {
+            (
+                me.playing.map(|i| me.station(i).id),
+                me.station(me.selected).id,
+                me.on_air(),
+            )
         };
         match req {
             Request::Status => self.status_json(),
@@ -387,7 +472,7 @@ impl App {
                 self.status_json()
             }
             Request::Play => {
-                if self.on_air().is_none() {
+                if !self.stream_loaded() {
                     self.tune_selected();
                 } else if let Err(e) = self.player.set_paused(false) {
                     return err(e.to_string());
@@ -395,6 +480,9 @@ impl App {
                 self.status_json()
             }
             Request::Pause => {
+                if !self.stream_loaded() {
+                    return err("nothing is playing".into());
+                }
                 if let Err(e) = self.player.set_paused(true) {
                     return err(e.to_string());
                 }
@@ -406,7 +494,6 @@ impl App {
             }
             Request::Stop => {
                 self.stop();
-                self.adhoc = None;
                 self.status_json()
             }
             Request::Next => {
@@ -459,14 +546,17 @@ impl App {
                         if self.pm.is_none() {
                             self.next_collection_preset();
                         }
-                        let hit = self.pm.as_mut().and_then(|p| p.find(name).map(|s| s.to_string()));
+                        let hit = self
+                            .pm
+                            .as_mut()
+                            .and_then(|p| p.find(name).map(|s| s.to_string()));
                         match hit {
                             Some(n) => {
                                 self.collection = true;
                                 if self.viz != VizKind::Milk {
                                     self.set_viz(VizKind::Milk);
                                 }
-                                self.status = format!("milkdrop · {n}");
+                                self.banner(format!("milkdrop · {n}"));
                             }
                             None if self.pm.is_some() => {
                                 return err(format!("no collection preset matching {name:?}"))
@@ -549,9 +639,9 @@ impl App {
             "station": station,
             "selected": self.station(self.selected).id,
             "now_playing": self.player.now_playing(),
-            "paused": self.player.paused,
-            "idle": self.player.idle,
-            "volume": self.player.volume,
+            "paused": self.player.props.paused,
+            "idle": self.player.props.idle,
+            "volume": self.player.props.volume,
             "viz": self.viz_name(),
             "fullscreen": self.fullscreen,
             "milkdrop": {
@@ -581,7 +671,7 @@ impl App {
             },
             "stations": stations::dial().len(),
             "config": stations::config_path(),
-            "status": self.status,
+            "status": self.shown_status(),
         })
     }
 
@@ -609,25 +699,25 @@ impl App {
             if !self.viz.blit() {
                 self.set_viz(VizKind::Milk);
             }
-            self.status = format!(
+            self.banner(format!(
                 "full · {}",
                 match self.viz {
                     VizKind::Milk => "milkdrop",
                     VizKind::Iss => "ISS",
                     _ => "viz",
                 }
-            );
+            ));
         } else {
             if self.kitty {
                 self.clear_kitty = true;
             }
-            self.status = "dial".into();
+            self.banner("dial");
         }
     }
 
     pub fn volume_delta(&mut self, delta: f64) {
         if let Err(err) = self.player.bump_volume(delta) {
-            self.status = format!("volume: {err}");
+            self.banner(format!("volume: {err}"));
         }
     }
 
@@ -676,7 +766,11 @@ impl App {
         let accent = self.on_air().unwrap_or_else(|| self.current()).accent;
         let wave = self.analyzer.waveform().to_vec();
         let bands = self.spectrum.levels().to_vec();
-        (self.milk.render_rgb(&wave, &bands, accent), crate::milk::PIX_W, crate::milk::PIX_H)
+        (
+            self.milk.render_rgb(&wave, &bands, accent),
+            crate::milk::PIX_W,
+            crate::milk::PIX_H,
+        )
     }
 
     /// Non-Kitty terminals: the same frame as shade cells.
@@ -688,7 +782,13 @@ impl App {
     pub fn tick(&mut self, dt: f32) {
         self.player.poll();
 
-        self.tap.set_want_audio(self.playing.is_some() && !self.player.paused);
+        // Url tunes keep `playing == None`. Follow the loaded stream, not the
+        // dial index, or the bars go silent for every `tune <url>`.
+        self.tap.set_want_audio(wants_mix(
+            self.on_air().is_some(),
+            self.player.props.paused,
+            self.player.props.idle,
+        ));
         self.tap.drain(&mut self.pcm);
         if let Some(pm) = self.pm.as_mut() {
             pm.feed(&self.pcm);
@@ -702,10 +802,12 @@ impl App {
         self.spectrum.tick(bands.as_ref().map(|b| b.as_slice()));
         self.milk.tick(dt, self.spectrum.levels());
 
-        if let Some(err) = self.player.last_error.take() {
-            self.status = format!("stream: {err}");
+        if let Some(err) = self.player.props.last_error.take() {
+            self.banner(format!("stream: {err}"));
         } else if let Some(station) = self.on_air() {
-            if self.player.paused {
+            if self.player.props.idle {
+                self.status = format!("idle · {}", station.name);
+            } else if self.player.props.paused {
                 self.status = format!("paused · {}", station.name);
             } else {
                 let now = self.player.now_playing();
@@ -716,5 +818,33 @@ impl App {
                 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notice_covers_transport_until_it_expires() {
+        assert_eq!(
+            compose_status(Some(("viz · wave", Duration::from_millis(10))), "on air"),
+            "viz · wave"
+        );
+        assert_eq!(
+            compose_status(Some(("viz · wave", NOTICE_TTL)), "on air · Mission"),
+            "on air · Mission"
+        );
+        assert_eq!(compose_status(None, "stopped"), "stopped");
+    }
+
+    #[test]
+    fn url_tune_pauses_and_still_feeds_the_tap() {
+        assert!(toggle_pauses(true, false));
+        assert!(wants_mix(true, false, false));
+        assert!(toggle_pauses(true, false) && !wants_mix(true, true, false));
+        assert!(!toggle_pauses(false, true));
+        assert!(!wants_mix(false, false, true));
+        assert!(!toggle_pauses(false, false));
     }
 }

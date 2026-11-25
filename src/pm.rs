@@ -54,10 +54,13 @@ type FnGetPlatformDisplayExt = unsafe extern "C" fn(u32, *mut c_void, *const i32
 type FnQueryDevicesExt = unsafe extern "C" fn(i32, *mut *mut c_void, *mut i32) -> EGLBoolean;
 type FnInitialize = unsafe extern "C" fn(EGLDisplay, *mut i32, *mut i32) -> EGLBoolean;
 type FnBindApi = unsafe extern "C" fn(u32) -> EGLBoolean;
-type FnChooseConfig = unsafe extern "C" fn(EGLDisplay, *const i32, *mut EGLConfig, i32, *mut i32) -> EGLBoolean;
+type FnChooseConfig =
+    unsafe extern "C" fn(EGLDisplay, *const i32, *mut EGLConfig, i32, *mut i32) -> EGLBoolean;
 type FnCreatePbuffer = unsafe extern "C" fn(EGLDisplay, EGLConfig, *const i32) -> EGLSurface;
-type FnCreateContext = unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLContext, *const i32) -> EGLContext;
-type FnMakeCurrent = unsafe extern "C" fn(EGLDisplay, EGLSurface, EGLSurface, EGLContext) -> EGLBoolean;
+type FnCreateContext =
+    unsafe extern "C" fn(EGLDisplay, EGLConfig, EGLContext, *const i32) -> EGLContext;
+type FnMakeCurrent =
+    unsafe extern "C" fn(EGLDisplay, EGLSurface, EGLSurface, EGLContext) -> EGLBoolean;
 type FnDestroyContext = unsafe extern "C" fn(EGLDisplay, EGLContext) -> EGLBoolean;
 type FnDestroySurface = unsafe extern "C" fn(EGLDisplay, EGLSurface) -> EGLBoolean;
 type FnTerminate = unsafe extern "C" fn(EGLDisplay) -> EGLBoolean;
@@ -124,7 +127,9 @@ pub struct ProjectM {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn data_dir() -> PathBuf {
@@ -162,7 +167,10 @@ pub fn preset_dir_candidates() -> Vec<PathBuf> {
 }
 
 fn texture_dirs(preset_dir: &Path) -> Vec<PathBuf> {
-    let mut v = vec![data_dir().join("textures"), PathBuf::from("/usr/share/projectM/textures")];
+    let mut v = vec![
+        data_dir().join("textures"),
+        PathBuf::from("/usr/share/projectM/textures"),
+    ];
     v.push(preset_dir.to_path_buf());
     v.into_iter().filter(|p| p.is_dir()).collect()
 }
@@ -174,12 +182,17 @@ pub fn scan_presets(dir: &Path) -> Vec<PathBuf> {
         if depth > 6 {
             return;
         }
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
                 walk(&p, out, depth + 1);
-            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("milk")) {
+            } else if p
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("milk"))
+            {
                 out.push(p);
             }
         }
@@ -199,7 +212,9 @@ pub fn availability() -> Result<(PathBuf, PathBuf, usize), String> {
     let dir = preset_dir_candidates()
         .into_iter()
         .find(|p| p.is_dir())
-        .ok_or_else(|| "no MilkDrop preset directory — run scripts/setup-milkdrop.sh".to_string())?;
+        .ok_or_else(|| {
+            "no MilkDrop preset directory — run scripts/setup-milkdrop.sh".to_string()
+        })?;
     let n = scan_presets(&dir).len();
     if n == 0 {
         return Err(format!("{} has no .milk presets", dir.display()));
@@ -273,6 +288,8 @@ impl ProjectM {
         }
     }
 
+    /// Next collection preset. Not `Iterator::next`: it wraps and loads.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> &str {
         self.load(self.idx + 1, true);
         &self.name
@@ -281,10 +298,11 @@ impl ProjectM {
     /// Jump to the first preset whose file name contains `needle`.
     pub fn find(&mut self, needle: &str) -> Option<&str> {
         let n = needle.to_ascii_lowercase();
-        let hit = self
-            .presets
-            .iter()
-            .position(|p| p.file_name().map(|f| f.to_string_lossy().to_ascii_lowercase().contains(&n)).unwrap_or(false))?;
+        let hit = self.presets.iter().position(|p| {
+            p.file_name()
+                .map(|f| f.to_string_lossy().to_ascii_lowercase().contains(&n))
+                .unwrap_or(false)
+        })?;
         self.load(hit, true);
         Some(&self.name)
     }
@@ -307,7 +325,15 @@ impl ProjectM {
             (self.pm.render)(self.pm.handle);
             (self.gl.finish)();
             (self.gl.pixel_storei)(GL_PACK_ALIGNMENT, 1);
-            (self.gl.read_pixels)(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, self.raw.as_mut_ptr() as *mut c_void);
+            (self.gl.read_pixels)(
+                0,
+                0,
+                w,
+                h,
+                GL_RGB,
+                GL_UNSIGNED_BYTE,
+                self.raw.as_mut_ptr() as *mut c_void,
+            );
         }
         let row = (W * 3) as usize;
         for y in 0..H as usize {
@@ -323,7 +349,12 @@ impl Drop for ProjectM {
         unsafe {
             (self.egl.make_current)(self.egl.dpy, self.egl.surf, self.egl.surf, self.egl.ctx);
             (self.pm.destroy)(self.pm.handle);
-            (self.egl.make_current)(self.egl.dpy, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+            (self.egl.make_current)(
+                self.egl.dpy,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
             (self.egl.destroy_context)(self.egl.dpy, self.egl.ctx);
             (self.egl.destroy_surface)(self.egl.dpy, self.egl.surf);
             (self.egl.terminate)(self.egl.dpy);
@@ -333,7 +364,8 @@ impl Drop for ProjectM {
 
 impl Egl {
     fn new(width: u32, height: u32) -> Result<Self, String> {
-        let lib = unsafe { Library::new("libEGL.so.1") }.map_err(|e| format!("libEGL.so.1: {e}"))?;
+        let lib =
+            unsafe { Library::new("libEGL.so.1") }.map_err(|e| format!("libEGL.so.1: {e}"))?;
         let get_proc: FnGetProcAddress = sym!(lib, FnGetProcAddress, "eglGetProcAddress");
         let get_display: FnGetDisplay = sym!(lib, FnGetDisplay, "eglGetDisplay");
         let initialize: FnInitialize = sym!(lib, FnInitialize, "eglInitialize");
@@ -371,7 +403,9 @@ impl Egl {
             let mut devs: [*mut c_void; 16] = [std::ptr::null_mut(); 16];
             let mut n = 0i32;
             if unsafe { qd(16, devs.as_mut_ptr(), &mut n) } == 1 && n > 0 {
-                let want = std::env::var("OMARADIO_EGL_DEVICE").ok().and_then(|s| s.parse::<usize>().ok());
+                let want = std::env::var("OMARADIO_EGL_DEVICE")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok());
                 let order: Vec<usize> = match want {
                     Some(i) if i < n as usize => vec![i],
                     _ => (0..n as usize).collect(),
@@ -386,7 +420,13 @@ impl Egl {
                 }
             }
             if dpy.is_null() {
-                let d = unsafe { gpd(EGL_PLATFORM_SURFACELESS_MESA, std::ptr::null_mut(), std::ptr::null()) };
+                let d = unsafe {
+                    gpd(
+                        EGL_PLATFORM_SURFACELESS_MESA,
+                        std::ptr::null_mut(),
+                        std::ptr::null(),
+                    )
+                };
                 if init_ok(d) {
                     dpy = d;
                 } else {
@@ -403,42 +443,79 @@ impl Egl {
             }
         }
         if dpy.is_null() {
-            return Err(format!("no usable EGL display (tried {})", tried.join(", ")));
+            return Err(format!(
+                "no usable EGL display (tried {})",
+                tried.join(", ")
+            ));
         }
         if unsafe { bind_api(EGL_OPENGL_API) } != 1 {
             return Err("EGL cannot bind desktop OpenGL".into());
         }
         let cfg_attribs = [
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-            EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-            EGL_DEPTH_SIZE, 0,
+            EGL_SURFACE_TYPE,
+            EGL_PBUFFER_BIT,
+            EGL_RENDERABLE_TYPE,
+            EGL_OPENGL_BIT,
+            EGL_RED_SIZE,
+            8,
+            EGL_GREEN_SIZE,
+            8,
+            EGL_BLUE_SIZE,
+            8,
+            EGL_ALPHA_SIZE,
+            8,
+            EGL_DEPTH_SIZE,
+            0,
             EGL_NONE,
         ];
         let mut cfg: EGLConfig = std::ptr::null_mut();
         let mut ncfg = 0i32;
-        if unsafe { choose_config(dpy, cfg_attribs.as_ptr(), &mut cfg, 1, &mut ncfg) } != 1 || ncfg < 1 {
-            return Err(format!("no EGL config with pbuffer + OpenGL (0x{:x})", unsafe { get_error() }));
+        if unsafe { choose_config(dpy, cfg_attribs.as_ptr(), &mut cfg, 1, &mut ncfg) } != 1
+            || ncfg < 1
+        {
+            return Err(format!(
+                "no EGL config with pbuffer + OpenGL (0x{:x})",
+                unsafe { get_error() }
+            ));
         }
         let pb_attribs = [EGL_WIDTH, width as i32, EGL_HEIGHT, height as i32, EGL_NONE];
         let surf = unsafe { create_pbuffer(dpy, cfg, pb_attribs.as_ptr()) };
         if surf.is_null() {
-            return Err(format!("eglCreatePbufferSurface failed (0x{:x})", unsafe { get_error() }));
+            return Err(format!("eglCreatePbufferSurface failed (0x{:x})", unsafe {
+                get_error()
+            }));
         }
         let ctx_attribs = [
-            EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 3,
-            EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+            EGL_CONTEXT_MAJOR_VERSION,
+            3,
+            EGL_CONTEXT_MINOR_VERSION,
+            3,
+            EGL_CONTEXT_OPENGL_PROFILE_MASK,
+            EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
             EGL_NONE,
         ];
         let ctx = unsafe { create_context(dpy, cfg, std::ptr::null_mut(), ctx_attribs.as_ptr()) };
         if ctx.is_null() {
             unsafe { destroy_surface(dpy, surf) };
-            return Err(format!("no OpenGL 3.3 core context (0x{:x})", unsafe { get_error() }));
+            return Err(format!("no OpenGL 3.3 core context (0x{:x})", unsafe {
+                get_error()
+            }));
         }
         if unsafe { make_current(dpy, surf, surf, ctx) } != 1 {
-            return Err(format!("eglMakeCurrent failed (0x{:x})", unsafe { get_error() }));
+            return Err(format!("eglMakeCurrent failed (0x{:x})", unsafe {
+                get_error()
+            }));
         }
-        Ok(Self { _lib: lib, make_current, destroy_context, destroy_surface, terminate, dpy, ctx, surf })
+        Ok(Self {
+            _lib: lib,
+            make_current,
+            destroy_context,
+            destroy_surface,
+            terminate,
+            dpy,
+            ctx,
+            surf,
+        })
     }
 }
 
@@ -453,7 +530,12 @@ impl Gl {
         let pixel_storei: FnGlPixelStorei = sym!(lib, FnGlPixelStorei, "glPixelStorei");
         let finish: FnGlFinish = sym!(lib, FnGlFinish, "glFinish");
         let get_string: FnGlGetString = sym!(lib, FnGlGetString, "glGetString");
-        let me = Self { _lib: Some(lib), read_pixels, pixel_storei, finish };
+        let me = Self {
+            _lib: Some(lib),
+            read_pixels,
+            pixel_storei,
+            finish,
+        };
         let p = unsafe { get_string(GL_RENDERER) };
         if p.is_null() {
             return Err("GL context is not current (glGetString returned null)".into());
@@ -466,12 +548,15 @@ impl Gl {
         if p.is_null() {
             return "unknown".into();
         }
-        unsafe { CStr::from_ptr(p as *const c_char) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(p as *const c_char) }
+            .to_string_lossy()
+            .into_owned()
     }
 
     fn renderer(&self) -> String {
         let lib = self._lib.as_ref().unwrap();
-        let get_string: Result<libloading::Symbol<FnGlGetString>, _> = unsafe { lib.get(b"glGetString\0") };
+        let get_string: Result<libloading::Symbol<FnGlGetString>, _> =
+            unsafe { lib.get(b"glGetString\0") };
         match get_string {
             Ok(f) => self.renderer_from(unsafe { f(GL_RENDERER) }),
             Err(_) => "unknown".into(),
@@ -481,7 +566,8 @@ impl Gl {
 
 impl Pm {
     fn new(lib_path: &Path, width: u32, height: u32, preset_dir: &Path) -> Result<Self, String> {
-        let lib = unsafe { Library::new(lib_path) }.map_err(|e| format!("{}: {e}", lib_path.display()))?;
+        let lib = unsafe { Library::new(lib_path) }
+            .map_err(|e| format!("{}: {e}", lib_path.display()))?;
         let create: FnPmCreate = sym!(lib, FnPmCreate, "projectm_create");
         let destroy: FnPmDestroy = sym!(lib, FnPmDestroy, "projectm_destroy");
         let set_window_size: FnPmSetSize = sym!(lib, FnPmSetSize, "projectm_set_window_size");
@@ -491,7 +577,8 @@ impl Pm {
         let set_aspect: FnPmSetBool = sym!(lib, FnPmSetBool, "projectm_set_aspect_correction");
         let set_beat: FnPmSetF32 = sym!(lib, FnPmSetF32, "projectm_set_beat_sensitivity");
         let set_soft_cut: FnPmSetF64 = sym!(lib, FnPmSetF64, "projectm_set_soft_cut_duration");
-        let set_tex_paths: FnPmTexPaths = sym!(lib, FnPmTexPaths, "projectm_set_texture_search_paths");
+        let set_tex_paths: FnPmTexPaths =
+            sym!(lib, FnPmTexPaths, "projectm_set_texture_search_paths");
         let load_file: FnPmLoadFile = sym!(lib, FnPmLoadFile, "projectm_load_preset_file");
         let render: FnPmRender = sym!(lib, FnPmRender, "projectm_opengl_render_frame");
         let pcm_f32: FnPmPcmF32 = sym!(lib, FnPmPcmF32, "projectm_pcm_add_float");
@@ -509,16 +596,27 @@ impl Pm {
             set_soft_cut(handle, 2.0);
         }
         let dirs = texture_dirs(preset_dir);
-        let cstrs: Vec<CString> = dirs.iter().filter_map(|d| CString::new(d.to_string_lossy().as_bytes()).ok()).collect();
+        let cstrs: Vec<CString> = dirs
+            .iter()
+            .filter_map(|d| CString::new(d.to_string_lossy().as_bytes()).ok())
+            .collect();
         let ptrs: Vec<*const c_char> = cstrs.iter().map(|c| c.as_ptr()).collect();
         if !ptrs.is_empty() {
             unsafe { set_tex_paths(handle, ptrs.as_ptr(), ptrs.len()) };
         }
-        Ok(Self { _lib: lib, destroy, load_file, render, pcm_f32, handle })
+        Ok(Self {
+            _lib: lib,
+            destroy,
+            load_file,
+            render,
+            pcm_f32,
+            handle,
+        })
     }
 
     fn version(&self) -> String {
-        let f: Result<libloading::Symbol<FnPmVersion>, _> = unsafe { self._lib.get(b"projectm_get_version_components\0") };
+        let f: Result<libloading::Symbol<FnPmVersion>, _> =
+            unsafe { self._lib.get(b"projectm_get_version_components\0") };
         match f {
             Ok(f) => {
                 let (mut a, mut b, mut c) = (0, 0, 0);
@@ -543,7 +641,10 @@ mod tests {
         std::fs::write(dir.join("b/deeper/a.MILK"), "").unwrap();
         std::fs::write(dir.join("b/readme.txt"), "").unwrap();
         let found = scan_presets(&dir);
-        let names: Vec<String> = found.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, vec!["a.MILK", "z.milk"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -553,12 +654,22 @@ mod tests {
     #[test]
     #[ignore]
     fn pm_dump() {
-        let Some(dir) = std::env::var_os("OMARADIO_PM_DUMP") else { return };
+        let Some(dir) = std::env::var_os("OMARADIO_PM_DUMP") else {
+            return;
+        };
         let dir = PathBuf::from(dir);
         let t0 = std::time::Instant::now();
         let mut pm = ProjectM::new(W, H).expect("projectM up");
-        eprintln!("projectM {} on {} · {} presets · init {:?}", pm.version, pm.renderer, pm.count(), t0.elapsed());
-        let pcm: Vec<f32> = (0..2048).map(|i| ((i as f32) * 0.05).sin() * 0.5 + ((i as f32) * 0.31).sin() * 0.2).collect();
+        eprintln!(
+            "projectM {} on {} · {} presets · init {:?}",
+            pm.version,
+            pm.renderer,
+            pm.count(),
+            t0.elapsed()
+        );
+        let pcm: Vec<f32> = (0..2048)
+            .map(|i| ((i as f32) * 0.05).sin() * 0.5 + ((i as f32) * 0.31).sin() * 0.2)
+            .collect();
         for shot in 0..4 {
             let t = std::time::Instant::now();
             let mut frame = Vec::new();
@@ -568,7 +679,11 @@ mod tests {
             }
             let per = t.elapsed().as_secs_f32() * 1000.0 / 60.0;
             let nonblack = frame.iter().filter(|&&c| c > 8).count();
-            eprintln!("preset {} '{}' · {per:.2} ms/frame · {nonblack} lit bytes", pm.index(), pm.name());
+            eprintln!(
+                "preset {} '{}' · {per:.2} ms/frame · {nonblack} lit bytes",
+                pm.index(),
+                pm.name()
+            );
             let mut out = format!("P6 {W} {H} 255\n").into_bytes();
             out.extend_from_slice(&frame);
             std::fs::write(dir.join(format!("pm-{shot}.ppm")), out).unwrap();

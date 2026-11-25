@@ -66,14 +66,62 @@ struct Preset {
 }
 
 const PRESETS: &[Preset] = &[
-    Preset { name: "liquid tunnel", warp: Warp::Tunnel, shape: Shape::Ring, palette: Palette::Accent, decay: 0.85 },
-    Preset { name: "solar swirl", warp: Warp::Swirl, shape: Shape::PolarBars, palette: Palette::Fire, decay: 0.88 },
-    Preset { name: "ice ripple", warp: Warp::Ripple, shape: Shape::WaveLine, palette: Palette::Ice, decay: 0.86 },
-    Preset { name: "neon kaleido", warp: Warp::Kaleido, shape: Shape::Orbit, palette: Palette::Neon, decay: 0.90 },
-    Preset { name: "drift rain", warp: Warp::Drift, shape: Shape::Dots, palette: Palette::HueCycle, decay: 0.92 },
-    Preset { name: "deep zoom", warp: Warp::Zoom, shape: Shape::Ring, palette: Palette::HueCycle, decay: 0.89 },
-    Preset { name: "orbit fire", warp: Warp::Tunnel, shape: Shape::Orbit, palette: Palette::Fire, decay: 0.87 },
-    Preset { name: "bar storm", warp: Warp::Kaleido, shape: Shape::PolarBars, palette: Palette::Accent, decay: 0.90 },
+    Preset {
+        name: "liquid tunnel",
+        warp: Warp::Tunnel,
+        shape: Shape::Ring,
+        palette: Palette::Accent,
+        decay: 0.85,
+    },
+    Preset {
+        name: "solar swirl",
+        warp: Warp::Swirl,
+        shape: Shape::PolarBars,
+        palette: Palette::Fire,
+        decay: 0.88,
+    },
+    Preset {
+        name: "ice ripple",
+        warp: Warp::Ripple,
+        shape: Shape::WaveLine,
+        palette: Palette::Ice,
+        decay: 0.86,
+    },
+    Preset {
+        name: "neon kaleido",
+        warp: Warp::Kaleido,
+        shape: Shape::Orbit,
+        palette: Palette::Neon,
+        decay: 0.90,
+    },
+    Preset {
+        name: "drift rain",
+        warp: Warp::Drift,
+        shape: Shape::Dots,
+        palette: Palette::HueCycle,
+        decay: 0.92,
+    },
+    Preset {
+        name: "deep zoom",
+        warp: Warp::Zoom,
+        shape: Shape::Ring,
+        palette: Palette::HueCycle,
+        decay: 0.89,
+    },
+    Preset {
+        name: "orbit fire",
+        warp: Warp::Tunnel,
+        shape: Shape::Orbit,
+        palette: Palette::Fire,
+        decay: 0.87,
+    },
+    Preset {
+        name: "bar storm",
+        warp: Warp::Kaleido,
+        shape: Shape::PolarBars,
+        palette: Palette::Accent,
+        decay: 0.90,
+    },
 ];
 
 pub struct Milkdrop {
@@ -93,6 +141,12 @@ pub struct Milkdrop {
     /// White flash on preset change.
     flash: f32,
     hue: f32,
+}
+
+impl Default for Milkdrop {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Milkdrop {
@@ -341,14 +395,28 @@ fn warp(kind: Warp, u: f32, v: f32, e: &Env) -> (f32, f32) {
 
 /// Fresh light painted this frame: (intensity 0..1, hue position 0..1).
 #[allow(clippy::too_many_arguments)]
-fn shape(kind: Shape, u: f32, v: f32, x: usize, w: usize, wave: &[f32], bands: &[f32], e: &Env) -> (f32, f32) {
+fn shape(
+    kind: Shape,
+    u: f32,
+    v: f32,
+    x: usize,
+    w: usize,
+    wave: &[f32],
+    bands: &[f32],
+    e: &Env,
+) -> (f32, f32) {
     let n = bands.len().max(1);
     let r = (u * u + v * v).sqrt();
     let ang = v.atan2(u);
     // Mirror left/right so the low end sits on one axis and treble on the other.
     let a = (ang / TAU).rem_euclid(1.0);
     let a2 = if a > 0.5 { 1.0 - a } else { a } * 2.0;
-    let band_at = |t: f32| bands.get(((t * n as f32) as usize).min(n - 1)).copied().unwrap_or(0.0);
+    let band_at = |t: f32| {
+        bands
+            .get(((t * n as f32) as usize).min(n - 1))
+            .copied()
+            .unwrap_or(0.0)
+    };
     match kind {
         Shape::Ring => {
             let sp = band_at(a2);
@@ -367,13 +435,20 @@ fn shape(kind: Shape, u: f32, v: f32, x: usize, w: usize, wave: &[f32], bands: &
             (radial * edge * (0.3 + sp * 0.7), a2)
         }
         Shape::WaveLine => {
-            let wi = if wave.is_empty() { 0 } else { (x * wave.len() / w.max(1)).min(wave.len() - 1) };
+            let wi = if wave.is_empty() {
+                0
+            } else {
+                (x * wave.len() / w.max(1)).min(wave.len() - 1)
+            };
             let wv = wave.get(wi).copied().unwrap_or(0.0);
             let amp = 0.16 + e.mid * 0.25 + e.pulse * 0.10;
             let wy = wv * amp;
             let line = (1.0 - (v - wy).abs() * 30.0).clamp(0.0, 1.0);
             let echo = (1.0 - (v + wy * 0.6).abs() * 30.0).clamp(0.0, 1.0);
-            ((line * (0.5 + wv.abs() * 2.0) + echo * 0.35).min(1.0), x as f32 / w as f32)
+            (
+                (line * (0.5 + wv.abs() * 2.0) + echo * 0.35).min(1.0),
+                x as f32 / w as f32,
+            )
         }
         Shape::Orbit => {
             const N: usize = 5;
@@ -391,7 +466,11 @@ fn shape(kind: Shape, u: f32, v: f32, x: usize, w: usize, wave: &[f32], bands: &
                     hue = i as f32 / N as f32;
                 }
             }
-            let wi = if wave.is_empty() { 0 } else { ((a * wave.len() as f32) as usize).min(wave.len() - 1) };
+            let wi = if wave.is_empty() {
+                0
+            } else {
+                ((a * wave.len() as f32) as usize).min(wave.len() - 1)
+            };
             let wv = wave.get(wi).copied().unwrap_or(0.0);
             let rw = 0.22 + wv * 0.10 * (1.0 + e.mid);
             let ring = (1.0 - (r - rw).abs() * 40.0).clamp(0.0, 1.0) * 0.6;
@@ -420,17 +499,41 @@ fn paint(kind: Palette, k: f32, hue: f32, e: &Env) -> (f32, f32, f32) {
     match kind {
         Palette::Accent => {
             let white = (k - 0.85).max(0.0) * 1.5;
-            ((ar * k + white).min(1.4), (ag * k + white).min(1.4), (ab * k + white).min(1.4))
+            (
+                (ar * k + white).min(1.4),
+                (ag * k + white).min(1.4),
+                (ab * k + white).min(1.4),
+            )
         }
         Palette::HueCycle => {
             let (r, g, b) = hsv(hue + e.hue + e.treble * 0.2, 0.85, 1.0);
             (r * k, g * k, b * k)
         }
-        Palette::Fire => ramp(k, &[(0.0, 0.0, 0.0), (0.85, 0.08, 0.0), (1.0, 0.55, 0.0), (1.0, 1.0, 0.6)]),
-        Palette::Ice => ramp(k, &[(0.0, 0.0, 0.0), (0.05, 0.12, 0.6), (0.2, 0.7, 1.0), (0.9, 1.0, 1.0)]),
+        Palette::Fire => ramp(
+            k,
+            &[
+                (0.0, 0.0, 0.0),
+                (0.85, 0.08, 0.0),
+                (1.0, 0.55, 0.0),
+                (1.0, 1.0, 0.6),
+            ],
+        ),
+        Palette::Ice => ramp(
+            k,
+            &[
+                (0.0, 0.0, 0.0),
+                (0.05, 0.12, 0.6),
+                (0.2, 0.7, 1.0),
+                (0.9, 1.0, 1.0),
+            ],
+        ),
         Palette::Neon => {
             let comp = (1.0 - ar, 1.0 - ag, 1.0 - ab);
-            let (r, g, b) = if ((hue * 6.0) as usize).is_multiple_of(2) { (ar, ag, ab) } else { comp };
+            let (r, g, b) = if ((hue * 6.0) as usize).is_multiple_of(2) {
+                (ar, ag, ab)
+            } else {
+                comp
+            };
             let sat = |c: f32| ((c - 0.5) * 1.6 + 0.5).clamp(0.05, 1.0);
             (sat(r) * k * 1.2, sat(g) * k * 1.2, sat(b) * k * 1.2)
         }
@@ -508,7 +611,11 @@ fn sample(buf: &[f32], w: usize, h: usize, u: f32, v: f32) -> (f32, f32, f32) {
     let (a, b, c, d) = (px(x0, y0), px(x1, y0), px(x0, y1), px(x1, y1));
     let top = (lerp(a.0, b.0, fx), lerp(a.1, b.1, fx), lerp(a.2, b.2, fx));
     let bot = (lerp(c.0, d.0, fx), lerp(c.1, d.1, fx), lerp(c.2, d.2, fx));
-    (lerp(top.0, bot.0, fy), lerp(top.1, bot.1, fy), lerp(top.2, bot.2, fy))
+    (
+        lerp(top.0, bot.0, fy),
+        lerp(top.1, bot.1, fy),
+        lerp(top.2, bot.2, fy),
+    )
 }
 
 #[cfg(test)]
@@ -531,7 +638,7 @@ mod tests {
             seen.push(n);
         }
         assert_eq!(m.next_preset(), first);
-        assert!(Milkdrop::preset_count() >= 6);
+        assert_eq!(Milkdrop::preset_count(), 8);
     }
 
     #[test]
@@ -547,8 +654,14 @@ mod tests {
             let mut m = Milkdrop::new();
             m.flash = 0.0;
             let lit = brightness(&m.render_rgb(&wave, &loud, (120, 170, 255)));
-            assert!(lit > dark + 0.02, "{name}: quiet {dark:.3} vs loud {lit:.3}");
-            assert!(dark < 0.05, "{name}: silence should be near black, got {dark:.3}");
+            assert!(
+                lit > dark + 0.02,
+                "{name}: quiet {dark:.3} vs loud {lit:.3}"
+            );
+            assert!(
+                dark < 0.05,
+                "{name}: silence should be near black, got {dark:.3}"
+            );
             let _ = m.next_preset();
         }
     }
@@ -615,7 +728,9 @@ mod tests {
     #[test]
     #[ignore]
     fn dump_frames() {
-        let Some(dir) = std::env::var_os("OMARADIO_MILK_DUMP") else { return };
+        let Some(dir) = std::env::var_os("OMARADIO_MILK_DUMP") else {
+            return;
+        };
         let dir = std::path::PathBuf::from(dir);
         let mut m = Milkdrop::new();
         for pi in 0..Milkdrop::preset_count() {
@@ -627,16 +742,23 @@ mod tests {
                 let bands: Vec<f32> = (0..BAR_COUNT)
                     .map(|i| {
                         let x = i as f32 / BAR_COUNT as f32;
-                        ((1.0 - x) * beat + 0.3 * (t * 3.0 + x * 9.0).sin().abs() * (1.0 - x * 0.5)).clamp(0.0, 1.0)
+                        ((1.0 - x) * beat + 0.3 * (t * 3.0 + x * 9.0).sin().abs() * (1.0 - x * 0.5))
+                            .clamp(0.0, 1.0)
                     })
                     .collect();
-                let wave: Vec<f32> = (0..256).map(|i| (i as f32 * 0.15 + t * 20.0).sin() * 0.5 * (0.3 + beat)).collect();
+                let wave: Vec<f32> = (0..256)
+                    .map(|i| (i as f32 * 0.15 + t * 20.0).sin() * 0.5 * (0.3 + beat))
+                    .collect();
                 m.tick(1.0 / 30.0, &bands);
                 rgb = m.render_rgb(&wave, &bands, (80, 220, 170));
             }
-            let mut out = format!("P6 {} {} 255\n", PIX_W, PIX_H).into_bytes();
+            let mut out = format!("P6 {PIX_W} {PIX_H} 255\n").into_bytes();
             out.extend_from_slice(&rgb);
-            std::fs::write(dir.join(format!("{pi}-{}.ppm", m.preset_name().replace(' ', "_"))), out).unwrap();
+            std::fs::write(
+                dir.join(format!("{pi}-{}.ppm", m.preset_name().replace(' ', "_"))),
+                out,
+            )
+            .unwrap();
             let _ = m.next_preset();
         }
     }

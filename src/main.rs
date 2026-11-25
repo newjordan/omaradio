@@ -1,24 +1,15 @@
 //! omaradio — a small night-dial TUI: Soma, old-time, liquid DnB, jazz, classical.
 
-mod app;
-mod analyze;
-mod ctl;
-mod kitty;
-mod milk;
-mod mpvwatch;
-mod player;
-mod pm;
-mod space;
-mod stations;
-mod tap;
-mod ui;
-mod visual;
-
 use anyhow::Result;
-use app::App;
 use crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::ExecutableCommand;
+use omaradio::app::App;
+use omaradio::ctl;
+use omaradio::kitty;
+use omaradio::ui;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{self, stdout};
@@ -106,7 +97,12 @@ fn park_stderr() -> Option<i32> {
     let log = std::env::var_os("XDG_RUNTIME_DIR")
         .map(|d| std::path::PathBuf::from(d).join("omaradio.log"))
         .and_then(|p| std::fs::File::create(p).ok())
-        .or_else(|| std::fs::OpenOptions::new().write(true).open("/dev/null").ok());
+        .or_else(|| {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open("/dev/null")
+                .ok()
+        });
     match log {
         Some(f) => {
             unsafe { libc::dup2(f.as_raw_fd(), 2) };
@@ -149,7 +145,7 @@ fn event_loop(
         }
         if app.wants_kitty_blit() {
             let area = app.viz_area;
-            if app.viz == crate::app::VizKind::Iss {
+            if app.viz == omaradio::app::VizKind::Iss {
                 if let Some(frame) = app.take_space_blit() {
                     let _ = kitty::blit_contain(
                         &mut stdout(),
@@ -199,7 +195,8 @@ fn event_loop(
 }
 
 fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
-    if mods.contains(KeyModifiers::CONTROL) && matches!(code, KeyCode::Char('c') | KeyCode::Char('C'))
+    if mods.contains(KeyModifiers::CONTROL)
+        && matches!(code, KeyCode::Char('c') | KeyCode::Char('C'))
     {
         app.should_quit = true;
         return;
@@ -241,7 +238,7 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
         }
         KeyCode::Char(c) if c.is_ascii_digit() => {
             let n = c.to_digit(10).unwrap_or(0) as usize;
-            if n >= 1 && n <= crate::stations::dial().len() {
+            if n >= 1 && n <= omaradio::stations::dial().len() {
                 app.tune(n - 1);
             }
         }
@@ -252,9 +249,9 @@ fn handle_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 /// Live mix proof: play an 8 kHz tone through the same mpv client-name,
 /// tap the sink monitor, FFT it, pause, and require the 8 kHz bar to drop.
 fn prove_tap() -> Result<()> {
-    use crate::analyze::{self, Analyzer, FFT_SIZE};
-    use crate::player::MpvPlayer;
-    use crate::tap::OutputTap;
+    use omaradio::analyze::{self, Analyzer, FFT_SIZE};
+    use omaradio::player::MpvPlayer;
+    use omaradio::tap::OutputTap;
 
     eprintln!("omaradio prove-tap — 8 kHz sine through omaradio mpv → monitor → FFT");
     // This plays an audible 8 kHz tone through the default sink. Never do that
@@ -307,8 +304,8 @@ fn prove_tap() -> Result<()> {
     eprintln!(
         "mpv title='{}' paused={} idle={}",
         player.now_playing(),
-        player.paused,
-        player.idle
+        player.props.paused,
+        player.props.idle
     );
 
     let mut play_rms = 0.0f32;
@@ -376,7 +373,9 @@ fn prove_tap() -> Result<()> {
     }
     eprintln!(
         "RESUME 8 kHz bar {expect} back above 0.15 after {} ms",
-        resume_ms.map(|m| m.to_string()).unwrap_or_else(|| "never".into())
+        resume_ms
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "never".into())
     );
     let _ = player.stop();
     let _ = std::fs::remove_file(&wav);
@@ -411,7 +410,9 @@ fn other_omaradio_pid() -> Option<u32> {
     let me = std::process::id();
     let dir = std::fs::read_dir("/proc").ok()?;
     for entry in dir.flatten() {
-        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
         if pid == me {
             continue;
         }
@@ -450,4 +451,31 @@ fn write_tone_wav(path: &std::path::Path, freq: f32, sr: u32, secs: f32) -> Resu
         f.write_all(&s.to_le_bytes())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tone_wav_header_matches_the_pcm() {
+        let path = std::env::temp_dir().join(format!("omaradio-wav-{}.wav", std::process::id()));
+        write_tone_wav(&path, 440.0, 8_000, 0.25).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(&bytes[0..4], b"RIFF");
+        assert_eq!(&bytes[8..12], b"WAVE");
+        assert_eq!(&bytes[12..16], b"fmt ");
+        let rate = u32::from_le_bytes(bytes[24..28].try_into().unwrap());
+        assert_eq!(rate, 8_000);
+        assert_eq!(&bytes[36..40], b"data");
+        let data_len = u32::from_le_bytes(bytes[40..44].try_into().unwrap());
+        let samples = data_len as usize / 2;
+        assert_eq!(samples, 2_000);
+        assert_eq!(bytes.len(), 44 + data_len as usize);
+        let first = i16::from_le_bytes(bytes[44..46].try_into().unwrap());
+        assert_eq!(first, 0, "sine starts at zero");
+        let later = i16::from_le_bytes(bytes[46..48].try_into().unwrap());
+        assert!(later.abs() > 0, "the next sample should leave zero");
+    }
 }

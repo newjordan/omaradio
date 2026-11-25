@@ -86,6 +86,7 @@ pub fn delete_all(out: &mut impl Write) -> io::Result<()> {
     out.flush()
 }
 
+#[allow(clippy::too_many_arguments)] // cell origin plus pixel size; a struct would not make the call clearer
 pub fn blit_rgb(
     out: &mut impl Write,
     rgb: &[u8],
@@ -97,10 +98,21 @@ pub fn blit_rgb(
     rows: u16,
 ) -> io::Result<()> {
     // Big frames (projectM at 320×180) go zlib-compressed; small ones raw.
-    blit(out, rgb, width, height, col, row, cols, rows, rgb.len() > 64 * 1024)
+    blit(
+        out,
+        rgb,
+        width,
+        height,
+        col,
+        row,
+        cols,
+        rows,
+        rgb.len() > 64 * 1024,
+    )
 }
 
 /// Letterbox into the pane so the full frame is visible (no stretch/crop).
+#[allow(clippy::too_many_arguments)]
 pub fn blit_contain(
     out: &mut impl Write,
     rgb: &[u8],
@@ -124,13 +136,7 @@ fn contain_cells(img_w: u32, img_h: u32, cols: u16, rows: u16) -> (u16, u16) {
     contain_cells_with(img_w, img_h, cols, rows, cell_aspect())
 }
 
-fn contain_cells_with(
-    img_w: u32,
-    img_h: u32,
-    cols: u16,
-    rows: u16,
-    cell_wh: f32,
-) -> (u16, u16) {
+fn contain_cells_with(img_w: u32, img_h: u32, cols: u16, rows: u16, cell_wh: f32) -> (u16, u16) {
     if cols == 0 || rows == 0 || img_w == 0 || img_h == 0 || cell_wh <= 0.0 {
         return (0, 0);
     }
@@ -145,6 +151,7 @@ fn contain_cells_with(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blit(
     out: &mut impl Write,
     rgb: &[u8],
@@ -210,13 +217,8 @@ mod tests {
     }
 
     fn pixel_box(img_w: u32, img_h: u32, cols: u16, rows: u16, cw: u16, ch: u16) -> (u32, u32) {
-        let (dc, dr) = contain_cells_with(
-            img_w,
-            img_h,
-            cols,
-            rows,
-            cell_aspect_from(Some((cw, ch))),
-        );
+        let (dc, dr) =
+            contain_cells_with(img_w, img_h, cols, rows, cell_aspect_from(Some((cw, ch))));
         (dc as u32 * cw as u32, dr as u32 * ch as u32)
     }
 
@@ -248,6 +250,23 @@ mod tests {
 
         let fb = contain_cells_with(1920, 1080, 80, 24, CELL_ASPECT_FALLBACK);
         assert!(fb.0 > 0 && fb.1 > 0 && fb.0 <= 80 && fb.1 <= 24);
+    }
+
+    #[test]
+    fn blit_roundtrips_the_rgb_bytes() {
+        let rgb = [1u8, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut out = Vec::new();
+        blit_rgb(&mut out, &rgb, 3, 1, 1, 2, 6, 3).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("s=3"), "{text}");
+        assert!(text.contains("v=1"), "{text}");
+        assert!(text.contains("c=6"), "{text}");
+        assert!(text.contains("r=3"), "{text}");
+        let marker = "m=0;";
+        let start = text.find(marker).expect("payload") + marker.len();
+        let end = text[start..].find('\u{1b}').unwrap() + start;
+        let decoded = STANDARD.decode(&text[start..end]).unwrap();
+        assert_eq!(decoded, rgb);
     }
 
     #[test]
