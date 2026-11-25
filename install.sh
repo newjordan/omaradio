@@ -17,7 +17,21 @@ for a in "$@"; do
   case "$a" in
     --milkdrop) MILKDROP=1 ;;
     --yes|-y) YES=1 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help)
+      cat <<'EOF'
+omaradio installer
+
+  curl -fsSL https://raw.githubusercontent.com/newjordan/omaradio/main/install.sh | sh
+  curl -fsSL …/install.sh | sh -s -- --milkdrop
+  ./install.sh
+
+Installs to ~/.cargo/bin/omaradio. Needs Rust (offers rustup if missing),
+mpv, and for the live FFT PipeWire's pactl/pw-record. The ISS view wants
+yt-dlp and ffmpeg. --milkdrop also builds the optional projectM collection.
+--yes skips the package-install prompt.
+EOF
+      exit 0
+      ;;
     *) printf 'unknown option %s\n' "$a" >&2; exit 2 ;;
   esac
 done

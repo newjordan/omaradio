@@ -150,6 +150,12 @@ pub struct SpaceCam {
     last_pub: Arc<Mutex<Option<Instant>>>,
 }
 
+impl Default for SpaceCam {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SpaceCam {
     pub fn new() -> Self {
         Self {
@@ -439,7 +445,9 @@ impl SpaceCam {
     /// kill the process group. A SIGKILL mid-chunk leaves the terminal
     /// swallowing bytes as image data after we exit.
     fn stop_native(&mut self) {
-        let Some(mut child) = self.mpv.take() else { return };
+        let Some(mut child) = self.mpv.take() else {
+            return;
+        };
         if let Some(ipc) = self.ipc.take() {
             if let Ok(mut s) = UnixStream::connect(&ipc) {
                 let _ = s.set_write_timeout(Some(Duration::from_millis(100)));
@@ -554,7 +562,12 @@ enum NativeVo {
 }
 
 /// Production mpv argv (no `--observe-property=` — that is IPC, not CLI).
-fn native_mpv_cli_args(area: Rect, ipc: &std::path::Path, media: &str, vo: NativeVo) -> Vec<String> {
+fn native_mpv_cli_args(
+    area: Rect,
+    ipc: &std::path::Path,
+    media: &str,
+    vo: NativeVo,
+) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "--no-config".into(),
         "--really-quiet".into(),
@@ -644,7 +657,8 @@ fn run_native_ipc_loop(
     let _ = subscribe_native_properties(&mut stream);
     let mut buf = [0u8; 4096];
     let mut carry: Vec<u8> = Vec::new();
-    while !watcher_flag.load(Ordering::Relaxed) && watcher_gen.load(Ordering::Relaxed) == gen_at_spawn
+    while !watcher_flag.load(Ordering::Relaxed)
+        && watcher_gen.load(Ordering::Relaxed) == gen_at_spawn
     {
         match stream.read(&mut buf) {
             Ok(0) => break,
@@ -673,6 +687,7 @@ impl Drop for SpaceCam {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one worker owns the shared slots; packing them hides which mutex is which
 fn worker(
     feed: SpaceFeed,
     url: String,
@@ -771,6 +786,7 @@ fn run_local(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_iss(
     page: &str,
     label: &str,
@@ -1074,7 +1090,6 @@ fn which(prog: &str) -> Option<PathBuf> {
     })
 }
 
-
 fn read_exact(r: &mut impl Read, buf: &mut [u8]) -> bool {
     let mut filled = 0;
     while filled < buf.len() {
@@ -1310,9 +1325,8 @@ mod media_step1_tests {
     fn local_fixture_decodes_via_real_ffmpeg_pipe() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_16x9.mp4");
         // Checked-in fixture is immutable input; never rewrite tests/fake_16x9.mp4.
-        let meta = std::fs::metadata(path).unwrap_or_else(|e| {
-            panic!("required fixture {path} missing: {e}")
-        });
+        let meta = std::fs::metadata(path)
+            .unwrap_or_else(|e| panic!("required fixture {path} missing: {e}"));
         assert!(
             meta.is_file() && meta.len() > 0,
             "required fixture {path} missing or empty"
@@ -1324,7 +1338,10 @@ mod media_step1_tests {
         assert!(read_exact(&mut stdout, &mut buf), "decode one full frame");
         assert!(buf.iter().any(|b| *b != 0), "frame is not all-black");
         let t0 = Instant::now();
-        assert!(read_exact(&mut stdout, &mut buf), "second frame (loop or next)");
+        assert!(
+            read_exact(&mut stdout, &mut buf),
+            "second frame (loop or next)"
+        );
         assert!(
             t0.elapsed() < Duration::from_millis(400),
             "loop/next frame continuity {:?}",
@@ -1390,11 +1407,17 @@ mod media_step1_tests {
         let px = crate::kitty::pane_pixel_size_with(area.width, area.height, Some((14, 29)));
         let flags = kitty_vo_placement(area, px);
         assert_eq!(
-            flags.iter().find(|a| a.starts_with("--vo-kitty-left=")).map(String::as_str),
+            flags
+                .iter()
+                .find(|a| a.starts_with("--vo-kitty-left="))
+                .map(String::as_str),
             Some("--vo-kitty-left=1")
         );
         assert_eq!(
-            flags.iter().find(|a| a.starts_with("--vo-kitty-top=")).map(String::as_str),
+            flags
+                .iter()
+                .find(|a| a.starts_with("--vo-kitty-top="))
+                .map(String::as_str),
             Some("--vo-kitty-top=4")
         );
         assert!(flags.iter().any(|a| a == "--vo-kitty-cols=40"));
@@ -1427,10 +1450,7 @@ mod media_step1_tests {
 
     #[test]
     fn shared_ytdl_prefers_video_only_then_combined_720() {
-        assert_eq!(
-            ISS_YTDL_FORMAT,
-            "bestvideo[height<=720]/best[height<=720]"
-        );
+        assert_eq!(ISS_YTDL_FORMAT, "bestvideo[height<=720]/best[height<=720]");
         let ipc = std::path::PathBuf::from("/tmp/omaradio-ytdl.sock");
         let native = native_mpv_cli_args(Rect::default(), &ipc, "media", NativeVo::Null);
         let flag = format!("--ytdl-format={ISS_YTDL_FORMAT}");
@@ -1441,19 +1461,35 @@ mod media_step1_tests {
         let rgb = resolve_iss_ytdl_args("https://example/watch");
         assert!(rgb.contains(&"-f"));
         assert!(rgb.contains(&ISS_YTDL_FORMAT));
-        assert_eq!(rgb[rgb.iter().position(|&a| a == "-f").unwrap() + 1], ISS_YTDL_FORMAT);
+        assert_eq!(
+            rgb[rgb.iter().position(|&a| a == "-f").unwrap() + 1],
+            ISS_YTDL_FORMAT
+        );
+    }
+
+    fn require_mpv() -> std::path::PathBuf {
+        if let Some(p) = std::env::var_os("MPV").map(std::path::PathBuf::from) {
+            if p.is_file() {
+                return p;
+            }
+        }
+        if let Some(path) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path) {
+                let candidate = dir.join("mpv");
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
+        panic!("mpv is required for this test — install mpv, or set MPV to the binary");
     }
 
     #[test]
     fn installed_mpv_native_ipc_observes_advancing_playback_and_reaps() {
-        let mpv = "/usr/bin/mpv";
-        if !std::path::Path::new(mpv).is_file() {
-            panic!("installed /usr/bin/mpv required for native acceptance");
-        }
+        let mpv = require_mpv();
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_16x9.mp4");
-        let meta = std::fs::metadata(path).unwrap_or_else(|e| {
-            panic!("required fixture {path} missing: {e}")
-        });
+        let meta = std::fs::metadata(path)
+            .unwrap_or_else(|e| panic!("required fixture {path} missing: {e}"));
         assert!(
             meta.is_file() && meta.len() > 0,
             "required fixture {path} missing or empty"
@@ -1461,7 +1497,7 @@ mod media_step1_tests {
         let ipc = unique_ipc_path();
         let _ = std::fs::remove_file(&ipc);
         let args = native_mpv_cli_args(Rect::default(), &ipc, path, NativeVo::Null);
-        let mut child = Command::new(mpv)
+        let mut child = Command::new(&mpv)
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -1522,14 +1558,9 @@ mod media_step1_tests {
 
     #[test]
     fn installed_mpv_invalid_local_bytes_fail_promptly() {
-        let mpv = "/usr/bin/mpv";
-        if !std::path::Path::new(mpv).is_file() {
-            panic!("installed /usr/bin/mpv required for native acceptance");
-        }
-        let junk = std::env::temp_dir().join(format!(
-            "omaradio-invalid-{}.bin",
-            std::process::id()
-        ));
+        let mpv = require_mpv();
+        let junk =
+            std::env::temp_dir().join(format!("omaradio-invalid-{}.bin", std::process::id()));
         std::fs::write(&junk, b"not a media container\x00\x01\x02 garbage").unwrap();
         let ipc = unique_ipc_path();
         let _ = std::fs::remove_file(&ipc);
@@ -1539,7 +1570,7 @@ mod media_step1_tests {
             junk.to_str().unwrap(),
             NativeVo::Null,
         );
-        let mut child = Command::new(mpv)
+        let mut child = Command::new(&mpv)
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())

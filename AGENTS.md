@@ -56,7 +56,7 @@ Unknown `cmd` values are rejected with the list of valid ones.
 
 ```json
 {
-  "ok": true, "version": "0.2.0", "protocol": 1,
+  "ok": true, "version": "0.3.0", "protocol": 1,
   "station": {"id": "mission", "n": 4, "name": "Mission Control", "source": "SomaFM", "url": "…"},
   "selected": "mission",
   "now_playing": "Steve Roach - Endorphin Dreamtime",

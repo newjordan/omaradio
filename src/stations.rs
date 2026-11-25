@@ -8,23 +8,49 @@
 use crate::visual::Mood;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Station {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub blurb: &'static str,
-    pub source: &'static str,
-    pub homepage: &'static str,
-    pub url: &'static str,
+    pub id: String,
+    pub name: String,
+    pub blurb: String,
+    pub source: String,
+    pub homepage: String,
+    pub url: String,
     pub mood: Mood,
     pub accent: (u8, u8, u8),
 }
 
-pub const BUILTIN: &[Station] = &[
-    Station {
+impl Station {
+    /// Stand-in used only when the dial is empty, so the UI never indexes off the end.
+    pub fn unknown() -> Self {
+        Self {
+            id: "none".into(),
+            name: "omaradio".into(),
+            blurb: String::new(),
+            source: String::new(),
+            homepage: String::new(),
+            url: String::new(),
+            mood: Mood::Space,
+            accent: (120, 170, 255),
+        }
+    }
+}
+
+struct Builtin {
+    id: &'static str,
+    name: &'static str,
+    blurb: &'static str,
+    source: &'static str,
+    homepage: &'static str,
+    url: &'static str,
+    mood: Mood,
+    accent: (u8, u8, u8),
+}
+
+const BUILTIN: &[Builtin] = &[
+    Builtin {
         id: "otr",
         name: "Old Time Radio",
         blurb: "golden-age drama, mystery, and variety",
@@ -34,7 +60,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Voice,
         accent: (212, 165, 106),
     },
-    Station {
+    Builtin {
         id: "liquid",
         name: "Liquid DnB",
         blurb: "rolling liquid funk, pads over breaks",
@@ -44,7 +70,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Liquid,
         accent: (80, 220, 170),
     },
-    Station {
+    Builtin {
         id: "space",
         name: "Space Station",
         blurb: "tune in, turn on, space out",
@@ -54,7 +80,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Space,
         accent: (120, 170, 255),
     },
-    Station {
+    Builtin {
         id: "mission",
         name: "Mission Control",
         blurb: "NASA comms over deep-space ambient",
@@ -64,7 +90,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Mission,
         accent: (255, 170, 70),
     },
-    Station {
+    Builtin {
         id: "jazz",
         name: "Jazz Groove",
         blurb: "after-midnight slow jazz, no chatter",
@@ -74,7 +100,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Jazz,
         accent: (210, 140, 255),
     },
-    Station {
+    Builtin {
         id: "blues",
         name: "Midnight Blues",
         blurb: "slow blues after hours",
@@ -84,7 +110,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Blues,
         accent: (220, 90, 70),
     },
-    Station {
+    Builtin {
         id: "wwoz",
         name: "WWOZ New Orleans",
         blurb: "live from the Quarter, jazz and blues",
@@ -94,7 +120,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Brass,
         accent: (255, 196, 80),
     },
-    Station {
+    Builtin {
         id: "portland",
         name: "All Classical Portland",
         blurb: "Oregon's classical station, 24 hours, real hosts",
@@ -104,7 +130,7 @@ pub const BUILTIN: &[Station] = &[
         mood: Mood::Classical,
         accent: (200, 185, 255),
     },
-    Station {
+    Builtin {
         id: "swiss",
         name: "Radio Swiss Classic",
         blurb: "slow, peaceful classical, no ads, no talk",
@@ -116,6 +142,22 @@ pub const BUILTIN: &[Station] = &[
     },
 ];
 
+/// The stations shipped with the binary. A config file replaces this list.
+pub fn builtin_stations() -> Vec<Station> {
+    BUILTIN
+        .iter()
+        .map(|s| Station {
+            id: s.id.into(),
+            name: s.name.into(),
+            blurb: s.blurb.into(),
+            source: s.source.into(),
+            homepage: s.homepage.into(),
+            url: s.url.into(),
+            mood: s.mood,
+            accent: s.accent,
+        })
+        .collect()
+}
 
 /// One station as it appears in `stations.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,7 +171,7 @@ pub struct StationSpec {
     pub source: String,
     #[serde(default)]
     pub homepage: String,
-    /// voice | liquid | space | mission | jazz | blues | brass
+    /// voice | liquid | space | mission | jazz | blues | brass | classical
     #[serde(default)]
     pub mood: String,
     /// Accent colour for the visualizers; defaults from the mood.
@@ -142,17 +184,21 @@ pub struct StationsFile {
     pub stations: Vec<StationSpec>,
 }
 
-static DIAL: RwLock<Option<&'static [Station]>> = RwLock::new(None);
+static DIAL: RwLock<Option<Arc<Vec<Station>>>> = RwLock::new(None);
 
 /// The live dial. Loads the config on first use; falls back to the built-ins.
-pub fn dial() -> &'static [Station] {
-    if let Some(d) = *DIAL.read().unwrap_or_else(|e| e.into_inner()) {
+///
+/// The returned `Arc` is a snapshot. A later `reload` swaps in a new list and
+/// drops the previous one once nothing else holds it.
+pub fn dial() -> Arc<Vec<Station>> {
+    if let Some(d) = DIAL.read().unwrap_or_else(|e| e.into_inner()).clone() {
         return d;
     }
     let _ = reload();
     DIAL.read()
         .unwrap_or_else(|e| e.into_inner())
-        .unwrap_or(BUILTIN)
+        .clone()
+        .unwrap_or_else(|| Arc::new(builtin_stations()))
 }
 
 pub fn config_dir() -> PathBuf {
@@ -162,7 +208,9 @@ pub fn config_dir() -> PathBuf {
     if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
         return PathBuf::from(x).join("omaradio");
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
     home.join(".config").join("omaradio")
 }
 
@@ -173,17 +221,19 @@ pub fn config_path() -> PathBuf {
 /// Re-read the config (or the built-ins when there is none) into the live dial.
 pub fn reload() -> Result<usize, String> {
     let path = config_path();
-    let list: &'static [Station] = if path.is_file() {
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let list = if path.is_file() {
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let file: StationsFile =
             serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         validate(&file.stations)?;
-        Box::leak(file.stations.iter().map(materialize).collect::<Vec<_>>().into_boxed_slice())
+        file.stations.iter().map(materialize).collect()
     } else {
-        BUILTIN
+        builtin_stations()
     };
-    *DIAL.write().unwrap_or_else(|e| e.into_inner()) = Some(list);
-    Ok(list.len())
+    let n = list.len();
+    *DIAL.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(list));
+    Ok(n)
 }
 
 pub fn validate(list: &[StationSpec]) -> Result<(), String> {
@@ -192,7 +242,12 @@ pub fn validate(list: &[StationSpec]) -> Result<(), String> {
     }
     let mut ids = std::collections::HashSet::new();
     for s in list {
-        if s.id.trim().is_empty() || !s.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if s.id.trim().is_empty()
+            || !s
+                .id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(format!("station id {:?} must be [A-Za-z0-9_-]", s.id));
         }
         if !ids.insert(s.id.as_str()) {
@@ -202,7 +257,10 @@ pub fn validate(list: &[StationSpec]) -> Result<(), String> {
             return Err(format!("station {:?} has no name", s.id));
         }
         if !(s.url.starts_with("http://") || s.url.starts_with("https://")) {
-            return Err(format!("station {:?} url must be http(s): {:?}", s.id, s.url));
+            return Err(format!(
+                "station {:?} url must be http(s): {:?}",
+                s.id, s.url
+            ));
         }
         if !s.mood.is_empty() && mood_from_str(&s.mood).is_none() {
             return Err(format!("station {:?} mood {:?} unknown", s.id, s.mood));
@@ -211,32 +269,39 @@ pub fn validate(list: &[StationSpec]) -> Result<(), String> {
     Ok(())
 }
 
-fn leak(s: &str) -> &'static str {
-    Box::leak(s.to_string().into_boxed_str())
-}
-
 fn materialize(s: &StationSpec) -> Station {
     let mood = mood_from_str(&s.mood).unwrap_or(Mood::Space);
     Station {
-        id: leak(&s.id),
-        name: leak(&s.name),
-        blurb: leak(&s.blurb),
-        source: leak(if s.source.is_empty() { &s.name } else { &s.source }),
-        homepage: leak(if s.homepage.is_empty() { &s.url } else { &s.homepage }),
-        url: leak(&s.url),
+        id: s.id.clone(),
+        name: s.name.clone(),
+        blurb: s.blurb.clone(),
+        source: if s.source.is_empty() {
+            s.name.clone()
+        } else {
+            s.source.clone()
+        },
+        homepage: if s.homepage.is_empty() {
+            s.url.clone()
+        } else {
+            s.homepage.clone()
+        },
+        url: s.url.clone(),
         mood,
-        accent: s.accent.map(|a| (a[0], a[1], a[2])).unwrap_or_else(|| accent_for(mood)),
+        accent: s
+            .accent
+            .map(|a| (a[0], a[1], a[2]))
+            .unwrap_or_else(|| accent_for(mood)),
     }
 }
 
 pub fn spec_of(s: &Station) -> StationSpec {
     StationSpec {
-        id: s.id.into(),
-        name: s.name.into(),
-        url: s.url.into(),
-        blurb: s.blurb.into(),
-        source: s.source.into(),
-        homepage: s.homepage.into(),
+        id: s.id.clone(),
+        name: s.name.clone(),
+        url: s.url.clone(),
+        blurb: s.blurb.clone(),
+        source: s.source.clone(),
+        homepage: s.homepage.clone(),
         mood: mood_name(s.mood).into(),
         accent: Some([s.accent.0, s.accent.1, s.accent.2]),
     }
@@ -255,7 +320,9 @@ pub fn save(list: &[StationSpec]) -> Result<usize, String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
-    let file = StationsFile { stations: list.to_vec() };
+    let file = StationsFile {
+        stations: list.to_vec(),
+    };
     let text = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, text + "\n").map_err(|e| format!("{}: {e}", tmp.display()))?;
@@ -326,20 +393,51 @@ fn accent_for(m: Mood) -> (u8, u8, u8) {
 /// Index to tune when nothing else was asked for: Mission Control if it is
 /// on the dial, else the first station.
 pub fn default_index() -> usize {
-    dial().iter().position(|s| s.id == "mission").unwrap_or(0)
+    default_index_in(&dial())
 }
 
-/// Resolve a user/agent reference: station id, 1-based dial number, or name.
+pub fn default_index_in(d: &[Station]) -> usize {
+    d.iter().position(|s| s.id == "mission").unwrap_or(0)
+}
+
+/// Resolve a user/agent reference against the live dial.
+///
+/// Precedence: exact id, then a 1-based dial number, then an exact name,
+/// then a name fragment. An id like `"10"` wins over "the 10th station".
 pub fn find(reference: &str) -> Option<usize> {
-    let d = dial();
-    if let Ok(n) = reference.parse::<usize>() {
-        return (n >= 1 && n <= d.len()).then(|| n - 1);
+    find_in(&dial(), reference)
+}
+
+pub fn find_in(d: &[Station], reference: &str) -> Option<usize> {
+    let r = reference.trim();
+    if r.is_empty() {
+        return None;
     }
-    let r = reference.to_ascii_lowercase();
+    if let Some(i) = d.iter().position(|s| s.id.eq_ignore_ascii_case(r)) {
+        return Some(i);
+    }
+    if let Ok(n) = r.parse::<usize>() {
+        if (1..=d.len()).contains(&n) {
+            return Some(n - 1);
+        }
+    }
+    let folded = r.to_ascii_lowercase();
     d.iter()
-        .position(|s| s.id.eq_ignore_ascii_case(&r))
-        .or_else(|| d.iter().position(|s| s.name.to_ascii_lowercase() == r))
-        .or_else(|| d.iter().position(|s| s.name.to_ascii_lowercase().contains(&r)))
+        .position(|s| s.name.eq_ignore_ascii_case(&folded))
+        .or_else(|| {
+            d.iter()
+                .position(|s| s.name.to_ascii_lowercase().contains(&folded))
+        })
+}
+
+/// Host (and port, and userinfo) of an http(s) url, for labelling a url tune.
+pub fn stream_host(url: &str) -> String {
+    let rest = url.split("//").nth(1).unwrap_or(url);
+    rest.split(['/', '?', '#'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(url)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -349,7 +447,8 @@ mod tests {
 
     #[test]
     fn dial_has_the_requested_kinds() {
-        let ids: HashSet<_> = BUILTIN.iter().map(|s| s.id).collect();
+        let stations = builtin_stations();
+        let ids: HashSet<_> = stations.iter().map(|s| s.id.as_str()).collect();
         assert!(ids.contains("otr"));
         assert!(ids.contains("liquid"));
         assert!(ids.contains("space"));
@@ -359,30 +458,34 @@ mod tests {
 
     #[test]
     fn ids_and_urls_are_unique_and_nonempty() {
+        let stations = builtin_stations();
         let mut ids = HashSet::new();
         let mut urls = HashSet::new();
-        for s in BUILTIN {
+        for s in &stations {
             assert!(!s.name.is_empty());
             assert!(!s.blurb.is_empty());
             assert!(!s.homepage.is_empty());
             assert!(s.homepage.starts_with("http"), "{}", s.homepage);
             assert!(s.url.starts_with("http"), "{}", s.url);
-            assert!(ids.insert(s.id), "duplicate id {}", s.id);
-            assert!(urls.insert(s.url), "duplicate url {}", s.url);
+            assert!(ids.insert(s.id.as_str()), "duplicate id {}", s.id);
+            assert!(urls.insert(s.url.as_str()), "duplicate url {}", s.url);
         }
-        assert!(BUILTIN.len() >= 5);
-        assert!(BUILTIN.len() <= 9);
+        assert_eq!(stations.len(), 9);
     }
 
     #[test]
     fn builtins_roundtrip_through_the_config_format() {
-        let specs: Vec<StationSpec> = BUILTIN.iter().map(spec_of).collect();
+        let stations = builtin_stations();
+        let specs: Vec<StationSpec> = stations.iter().map(spec_of).collect();
         validate(&specs).unwrap();
-        let text = serde_json::to_string(&StationsFile { stations: specs.clone() }).unwrap();
+        let text = serde_json::to_string(&StationsFile {
+            stations: specs.clone(),
+        })
+        .unwrap();
         let back: StationsFile = serde_json::from_str(&text).unwrap();
         assert_eq!(back.stations, specs);
         let again: Vec<Station> = back.stations.iter().map(materialize).collect();
-        for (a, b) in again.iter().zip(BUILTIN) {
+        for (a, b) in again.iter().zip(&stations) {
             assert_eq!(a.id, b.id);
             assert_eq!(a.url, b.url);
             assert_eq!(a.mood, b.mood);
@@ -392,13 +495,25 @@ mod tests {
 
     #[test]
     fn validate_rejects_bad_specs() {
-        let ok = StationSpec { id: "x".into(), name: "X".into(), url: "https://x".into(), blurb: String::new(), source: String::new(), homepage: String::new(), mood: String::new(), accent: None };
+        let ok = StationSpec {
+            id: "x".into(),
+            name: "X".into(),
+            url: "https://x".into(),
+            blurb: String::new(),
+            source: String::new(),
+            homepage: String::new(),
+            mood: String::new(),
+            accent: None,
+        };
         assert!(validate(std::slice::from_ref(&ok)).is_ok());
-        let mut bad = ok.clone(); bad.url = "ftp://x".into();
+        let mut bad = ok.clone();
+        bad.url = "ftp://x".into();
         assert!(validate(&[bad]).is_err());
-        let mut bad = ok.clone(); bad.id = "has space".into();
+        let mut bad = ok.clone();
+        bad.id = "has space".into();
         assert!(validate(&[bad]).is_err());
-        let mut bad = ok.clone(); bad.mood = "grunge".into();
+        let mut bad = ok.clone();
+        bad.mood = "grunge".into();
         assert!(validate(&[bad]).is_err());
         assert!(validate(&[ok.clone(), ok]).is_err(), "duplicate ids");
         assert!(validate(&[]).is_err());
@@ -406,7 +521,10 @@ mod tests {
 
     #[test]
     fn minimal_spec_gets_sane_defaults() {
-        let s: StationSpec = serde_json::from_str(r#"{"id":"kexp","name":"KEXP","url":"https://kexp-mp3-128.streamguys1.com/kexp128.mp3"}"#).unwrap();
+        let s: StationSpec = serde_json::from_str(
+            r#"{"id":"kexp","name":"KEXP","url":"https://kexp-mp3-128.streamguys1.com/kexp128.mp3"}"#,
+        )
+        .unwrap();
         let st = materialize(&s);
         assert_eq!(st.source, "KEXP");
         assert_eq!(st.homepage, st.url);
@@ -415,16 +533,68 @@ mod tests {
 
     #[test]
     fn find_accepts_id_number_and_name() {
-        assert_eq!(find("mission").map(|i| dial()[i].id), Some("mission"));
-        assert_eq!(find("1").map(|i| dial()[i].id), Some("otr"));
-        assert_eq!(find("Jazz Groove").map(|i| dial()[i].id), Some("jazz"));
-        assert_eq!(find("wwoz").map(|i| dial()[i].id), Some("wwoz"));
-        assert_eq!(find("0"), None);
-        assert_eq!(find("nope-nope"), None);
+        let d = builtin_stations();
+        assert_eq!(
+            find_in(&d, "mission").map(|i| d[i].id.as_str()),
+            Some("mission")
+        );
+        assert_eq!(find_in(&d, "1").map(|i| d[i].id.as_str()), Some("otr"));
+        assert_eq!(
+            find_in(&d, "Jazz Groove").map(|i| d[i].id.as_str()),
+            Some("jazz")
+        );
+        assert_eq!(find_in(&d, "wwoz").map(|i| d[i].id.as_str()), Some("wwoz"));
+        assert_eq!(
+            find_in(&d, "groove").map(|i| d[i].id.as_str()),
+            Some("jazz")
+        );
+        assert_eq!(find_in(&d, "0"), None);
+        assert_eq!(find_in(&d, "nope-nope"), None);
+        assert_eq!(find_in(&d, "   "), None);
+    }
+
+    #[test]
+    fn numeric_id_wins_over_dial_position() {
+        let d = vec![
+            Station {
+                id: "10".into(),
+                name: "Ten".into(),
+                blurb: String::new(),
+                source: String::new(),
+                homepage: String::new(),
+                url: "https://example.test/10".into(),
+                mood: Mood::Space,
+                accent: (1, 2, 3),
+            },
+            Station {
+                id: "other".into(),
+                name: "Other".into(),
+                blurb: String::new(),
+                source: String::new(),
+                homepage: String::new(),
+                url: "https://example.test/other".into(),
+                mood: Mood::Jazz,
+                accent: (4, 5, 6),
+            },
+        ];
+        // "10" is an id, not "the 10th row" (there is no 10th row).
+        assert_eq!(find_in(&d, "10").map(|i| d[i].id.as_str()), Some("10"));
+        assert_eq!(find_in(&d, "2").map(|i| d[i].id.as_str()), Some("other"));
+        assert_eq!(find_in(&d, "1").map(|i| d[i].id.as_str()), Some("10"));
     }
 
     #[test]
     fn default_tunes_mission_control() {
-        assert_eq!(dial()[default_index()].id, "mission");
+        let d = builtin_stations();
+        assert_eq!(d[default_index_in(&d)].id, "mission");
+    }
+
+    #[test]
+    fn stream_host_keeps_port_and_drops_the_path() {
+        assert_eq!(
+            stream_host("https://example.test:8443/otr"),
+            "example.test:8443"
+        );
+        assert_eq!(stream_host("http://east.example/stream"), "east.example");
     }
 }

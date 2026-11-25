@@ -38,6 +38,12 @@ pub struct Spectrum {
     peak_vel: Vec<f32>,
 }
 
+impl Default for Spectrum {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Spectrum {
     pub fn new() -> Self {
         Self {
@@ -60,7 +66,11 @@ impl Spectrum {
         if let Some(bands) = bands {
             for i in 0..n {
                 let target = bands.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
-                let rate = if target > self.bars[i] { ATTACK } else { RELEASE };
+                let rate = if target > self.bars[i] {
+                    ATTACK
+                } else {
+                    RELEASE
+                };
                 self.bars[i] = lerp(self.bars[i], target, rate);
             }
         }
@@ -158,7 +168,12 @@ pub fn render_wave(buf: &mut Buffer, area: Rect, wave: &[f32], accent: (u8, u8, 
         };
         let y = (mid as f32 - sample * (dot_h as f32 * 0.42))
             .clamp(0.0, (dot_h.saturating_sub(1)) as f32) as usize;
-        let color = bar_color(x * BAR_COUNT / dot_w.max(1), BAR_COUNT, sample.abs(), accent);
+        let color = bar_color(
+            x * BAR_COUNT / dot_w.max(1),
+            BAR_COUNT,
+            sample.abs(),
+            accent,
+        );
         let (y0, y1) = if y < prev_y { (y, prev_y) } else { (prev_y, y) };
         for py in y0..=y1 {
             set_dot(&mut dots, &mut colors, width, height, x, py, color);
@@ -254,11 +269,7 @@ fn bar_color(idx: usize, n: usize, intensity: f32, accent: (u8, u8, u8)) -> (u8,
     };
     let i = intensity.clamp(0.0, 1.0);
     let i = 0.18 + i * 0.82;
-    (
-        (br * i) as u8,
-        (bg * i) as u8,
-        (bb * i) as u8,
-    )
+    ((br * i) as u8, (bg * i) as u8, (bb * i) as u8)
 }
 
 fn peak_color(accent: (u8, u8, u8)) -> (u8, u8, u8) {
@@ -296,5 +307,41 @@ mod tests {
         assert_eq!(braille_char(0), ' ');
         assert_eq!(braille_char(0xFF), '⣿');
         assert_ne!(braille_char(0x01), ' ');
+    }
+
+    #[test]
+    fn loud_bars_paint_cells_and_silence_does_not() {
+        use ratatui::buffer::Buffer;
+        use ratatui::layout::Rect;
+        let area = Rect::new(0, 0, 48, 10);
+        let mut spec = Spectrum::new();
+        let loud = [0.95f32; crate::analyze::BAR_COUNT];
+        for _ in 0..24 {
+            spec.tick(Some(&loud));
+        }
+        let mut buf = Buffer::empty(area);
+        spec.render(&mut buf, area, (80, 220, 170));
+        let painted = buf.content().iter().filter(|c| c.symbol() != " ").count();
+        assert!(painted > 30, "loud spectrum painted {painted} cells");
+
+        let quiet = Spectrum::new();
+        let mut buf = Buffer::empty(area);
+        quiet.render(&mut buf, area, (80, 220, 170));
+        let painted = buf.content().iter().filter(|c| c.symbol() != " ").count();
+        assert_eq!(painted, 0, "silence should leave the pane blank");
+    }
+
+    #[test]
+    fn wave_of_a_sine_paints_a_trace() {
+        use ratatui::buffer::Buffer;
+        use ratatui::layout::Rect;
+        let area = Rect::new(0, 0, 40, 8);
+        let wave: Vec<f32> = (0..256).map(|i| (i as f32 * 0.08).sin() * 0.8).collect();
+        let mut buf = Buffer::empty(area);
+        render_wave(&mut buf, area, &wave, (210, 140, 255));
+        let painted = buf.content().iter().filter(|c| c.symbol() != " ").count();
+        assert!(painted > 10, "wave painted {painted} cells");
+        let mut buf = Buffer::empty(area);
+        render_wave(&mut buf, Rect::new(0, 0, 1, 1), &wave, (1, 1, 1));
     }
 }
